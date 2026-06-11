@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import MascotDisplay from '@/components/mascot/MascotDisplay'
+import VideoPreloader from '@/components/mascot/VideoPreloader'
 import ChatInput from './ChatInput'
 import { useChat } from '@/hooks/useChat'
 import type { ChatMessage, MascotState } from '@/types/chat'
@@ -157,6 +158,7 @@ export default function ChatWindow() {
 
   return (
     <div className="absolute inset-0 flex overflow-hidden" style={{ background: '#080503' }}>
+      <VideoPreloader />
 
       {/* ════════════════════════════════
           PANEL KINGSO — Desktop gauche — fond blanc
@@ -219,7 +221,7 @@ export default function ChatWindow() {
         {/* ── Kingso mobile — en haut — fond blanc ── */}
         <div
           className="lg:hidden relative flex-shrink-0 flex flex-col items-center overflow-hidden bg-white border-b border-gray-100"
-          style={{ height: '58dvh', paddingTop: '8px', paddingBottom: '16px' }}
+          style={{ height: '58dvh', paddingTop: '8px', paddingBottom: '10px' }}
         >
           {/* Flash mobile subtil */}
           {showFlash && (
