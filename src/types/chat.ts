@@ -1,5 +1,5 @@
 export type MessageRole = 'USER' | 'ASSISTANT'
-export type MascotState = 'idle' | 'thinking' | 'happy' | 'wave'
+export type MascotState = 'idle' | 'thinking' | 'happy' | 'wave' | 'talking' | 'bored' | 'confused'
 
 export interface ChatMessage {
   id: string

@@ -6,10 +6,13 @@ import type { MascotState } from '@/types/chat'
 /* Associe chaque état à une vidéo dans /public
    Ajouter les autres vidéos au fur et à mesure */
 const VIDEO_STATES: Partial<Record<MascotState, string>> = {
-  idle: '/kingso22.mp4',
-  wave: '/kingso-start2.mp4',
-  // thinking : '/kingso-thinking.mp4',
-  // happy    : '/kingso-happy.mp4',
+  idle:     '/kingso22.mp4',
+  wave:     '/kingso-start2.mp4',
+  thinking: '/kingso-thinking.mp4',
+  happy:    '/kingso-happy.mp4',
+  talking:  '/kingso-talking.mp4',
+  bored:    '/kingso-bored.mp4',
+  confused: '/kingso-confused.mp4',
 }
 
 /* Orbites orange LRS (état "thinking" sans vidéo) */
@@ -36,16 +39,21 @@ export default function MascotDisplay({ state, size = 260 }: MascotDisplayProps)
   const motionClass = {
     idle:     'mascot-float glow-idle',
     thinking: 'mascot-thinking glow-intense',
+    talking:  'mascot-thinking glow-intense',
     happy:    'mascot-happy glow-intense',
     wave:     'mascot-wave glow-idle',
+    bored:    'mascot-float glow-idle',
+    confused: 'mascot-thinking glow-idle',
   }[state]
 
-  /* Glow appliqué même sur la vidéo */
   const glowClass = {
     idle:     'glow-idle',
     thinking: 'glow-intense',
+    talking:  'glow-intense',
     happy:    'glow-intense',
     wave:     'glow-idle',
+    bored:    'glow-idle',
+    confused: 'glow-idle',
   }[state]
 
   return (

@@ -10,22 +10,23 @@ import type { ChatMessage, MascotState } from '@/types/chat'
 const STATE_LABEL: Record<MascotState, string> = {
   idle:     'En ligne',
   thinking: 'Kingso réfléchit…',
+  talking:  'Kingso répond…',
   happy:    'Kingso a répondu !',
   wave:     'Bonjour !',
+  bored:    'Kingso s\'ennuie…',
+  confused: 'Kingso ne sait pas…',
 }
 
 const STATE_DOT_COLOR: Record<MascotState, string> = {
   idle:     '#22c55e',
   thinking: '#e73e11',
+  talking:  '#e73e11',
   happy:    '#22c55e',
   wave:     '#22c55e',
+  bored:    '#94a3b8',
+  confused: '#94a3b8',
 }
 
-const SUGGESTIONS = [
-  'Quelle est la durée de garantie ?',
-  "Comment se passe l'installation ?",
-  'Les panneaux fonctionnent par temps couvert ?',
-]
 
 /* ── Bulle de message ── */
 function MessageBubble({
@@ -177,7 +178,7 @@ export default function ChatWindow() {
 
         {/* Kingso centré verticalement */}
         <div className="relative z-10 flex flex-1 flex-col items-center justify-center">
-          <MascotDisplay state={mascotState} size={520} />
+          <MascotDisplay state={mascotState} size={680} />
 
           <div className="mt-1 text-center space-y-1">
             <h1
@@ -248,8 +249,7 @@ export default function ChatWindow() {
         {/* ── Zone messages ── */}
         <div className="flex-1 overflow-y-auto dark-scroll px-5 lg:px-8 py-6 space-y-4 min-h-0">
           {messages.length === 0 && (
-            <div className="flex h-full flex-col justify-center gap-6 py-8">
-              {/* Message de bienvenue style Kingso */}
+            <div className="flex h-full flex-col justify-center py-8">
               <div className="flex items-end gap-3">
                 <div className="flex flex-col gap-1.5 max-w-[80%]">
                   <span className="text-xs font-semibold ml-1" style={{ color: '#e73e11' }}>Kingso</span>
@@ -269,27 +269,6 @@ export default function ChatWindow() {
                     Bonjour ! Je suis Kingso, votre assistant Le Roi Solaire. Posez-moi vos questions — je réponds uniquement depuis notre documentation officielle.
                   </div>
                 </div>
-              </div>
-
-              {/* Suggestions */}
-              <div className="flex flex-col gap-2.5">
-                <p className="text-xs text-white/20 tracking-wide uppercase">Questions fréquentes</p>
-                {SUGGESTIONS.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => { handleInteraction(); sendMessage(q) }}
-                    className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-left text-white/60 transition-all hover:text-white"
-                    style={{
-                      background: 'rgba(231,62,17,0.04)',
-                      border: '1px solid rgba(231,62,17,0.15)',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(231,62,17,0.45)')}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'rgba(231,62,17,0.15)')}
-                  >
-                    <span className="text-base" style={{ color: '#e73e11' }}>→</span>
-                    {q}
-                  </button>
-                ))}
               </div>
             </div>
           )}
