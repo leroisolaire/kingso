@@ -233,8 +233,8 @@ export default function ChatWindow() {
           )}
 
 
-          <div className="relative z-10 flex flex-col items-center gap-2">
-            <MascotDisplay state={mascotState} size={340} />
+          <div className="relative z-10 flex flex-col items-center gap-2 pt-4">
+            <MascotDisplay state={mascotState} size={300} />
             <div className="text-center">
               <h1 className="text-4xl font-black text-gray-900 tracking-tight">Kingso</h1>
               <div className="flex items-center justify-center gap-1.5 mt-1">
