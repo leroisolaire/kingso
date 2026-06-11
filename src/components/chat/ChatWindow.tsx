@@ -219,7 +219,7 @@ export default function ChatWindow() {
         {/* ── Kingso mobile — en haut — fond blanc ── */}
         <div
           className="lg:hidden relative flex-shrink-0 flex flex-col items-center justify-end pb-5 overflow-hidden bg-white border-b border-gray-100"
-          style={{ height: '38dvh' }}
+          style={{ height: '48dvh' }}
         >
           {/* Flash mobile subtil */}
           {showFlash && (
@@ -234,7 +234,7 @@ export default function ChatWindow() {
 
 
           <div className="relative z-10 flex flex-col items-center gap-2">
-            <MascotDisplay state={mascotState} size={180} />
+            <MascotDisplay state={mascotState} size={340} />
             <div className="text-center">
               <h1 className="text-4xl font-black text-gray-900 tracking-tight">Kingso</h1>
               <div className="flex items-center justify-center gap-1.5 mt-1">
