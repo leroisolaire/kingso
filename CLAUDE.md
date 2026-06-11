@@ -33,7 +33,7 @@ Back-office :
 * Gestion des documents
 * Gestion des FAQ
 * Historique
-Gestion des roles pour les documents
+Gestion des roles pour les documents2
 
 Base documentaire :
 
