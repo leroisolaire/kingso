@@ -7,9 +7,9 @@ import type { MascotState } from '@/types/chat'
    Ajouter les autres vidéos au fur et à mesure */
 const VIDEO_STATES: Partial<Record<MascotState, string>> = {
   idle: '/kingso22.mp4',
+  wave: '/kingso-start2.mp4',
   // thinking : '/kingso-thinking.mp4',
   // happy    : '/kingso-happy.mp4',
-  // wave     : '/kingso-wave.mp4',
 }
 
 /* Orbites orange LRS (état "thinking" sans vidéo) */
@@ -96,6 +96,7 @@ export default function MascotDisplay({ state, size = 260 }: MascotDisplayProps)
         >
           {/* Pas de filter/glow sur le parent : un filter CSS casse mix-blend-mode sur l'enfant */}
           <video
+            key={videoSrc}
             autoPlay
             loop
             muted

@@ -136,7 +136,7 @@ function TypingBubble() {
    COMPOSANT PRINCIPAL
 ══════════════════════════════════════════ */
 export default function ChatWindow() {
-  const { messages, isTyping, mascotState, sendMessage } = useChat()
+  const { messages, isTyping, mascotState, sendMessage, handleInteraction } = useChat()
   const [showFlash, setShowFlash] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -277,7 +277,7 @@ export default function ChatWindow() {
                 {SUGGESTIONS.map((q) => (
                   <button
                     key={q}
-                    onClick={() => sendMessage(q)}
+                    onClick={() => { handleInteraction(); sendMessage(q) }}
                     className="group flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-left text-white/60 transition-all hover:text-white"
                     style={{
                       background: 'rgba(231,62,17,0.04)',
@@ -312,7 +312,7 @@ export default function ChatWindow() {
           className="flex-shrink-0 px-4 lg:px-8 py-4"
           style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
         >
-          <ChatInput onSend={sendMessage} disabled={isTyping} />
+          <ChatInput onSend={sendMessage} disabled={isTyping} onFocus={handleInteraction} />
         </div>
       </div>
     </div>

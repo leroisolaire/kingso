@@ -6,7 +6,11 @@ import type { ChatMessage, MascotState } from '@/types/chat'
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isTyping, setIsTyping] = useState(false)
-  const [mascotState, setMascotState] = useState<MascotState>('idle')
+  const [mascotState, setMascotState] = useState<MascotState>('wave')
+
+  const handleInteraction = useCallback(() => {
+    setMascotState((prev) => prev === 'wave' ? 'idle' : prev)
+  }, [])
 
   const sendMessage = useCallback(async (content: string) => {
     const userMessage: ChatMessage = {
@@ -54,5 +58,5 @@ export function useChat() {
     }
   }, [])
 
-  return { messages, isTyping, mascotState, sendMessage }
+  return { messages, isTyping, mascotState, sendMessage, handleInteraction }
 }

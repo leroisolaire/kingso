@@ -5,9 +5,10 @@ import { useState, KeyboardEvent, FormEvent } from 'react'
 interface ChatInputProps {
   onSend: (message: string) => void
   disabled?: boolean
+  onFocus?: () => void
 }
 
-export default function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export default function ChatInput({ onSend, disabled = false, onFocus }: ChatInputProps) {
   const [value, setValue] = useState('')
 
   const handleSubmit = (e: FormEvent) => {
@@ -42,7 +43,7 @@ export default function ChatInput({ onSend, disabled = false }: ChatInputProps) 
           caretColor: '#e73e11',
         }}
         /* placeholder couleur via CSS inline trick */
-        onFocus={e => e.currentTarget.style.borderColor = 'rgba(231,62,17,0.4)'}
+        onFocus={e => { onFocus?.(); e.currentTarget.style.borderColor = 'rgba(231,62,17,0.4)' }}
         onBlur={e  => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)'}
       />
 
