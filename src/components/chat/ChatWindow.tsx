@@ -219,7 +219,7 @@ export default function ChatWindow() {
         {/* ── Kingso mobile — en haut — fond blanc ── */}
         <div
           className="lg:hidden relative flex-shrink-0 flex flex-col items-center overflow-hidden bg-white border-b border-gray-100"
-          style={{ height: '48dvh', paddingTop: '8px', paddingBottom: '16px' }}
+          style={{ height: '58dvh', paddingTop: '8px', paddingBottom: '16px' }}
         >
           {/* Flash mobile subtil */}
           {showFlash && (
