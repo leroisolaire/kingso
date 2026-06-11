@@ -236,10 +236,10 @@ export default function ChatWindow() {
             <MascotDisplay state={mascotState} size={300} />
             <div className="text-center">
               <h1 className="text-4xl font-black text-gray-900 tracking-tight">Kingso</h1>
-              <div className="flex items-center justify-center gap-1.5 mt-1" style={{ marginBottom: '5px' }}>
-                <div className="h-2 w-2 rounded-full"
+              <div className="flex items-center justify-center gap-2 mt-2" style={{ marginBottom: '12px' }}>
+                <div className="h-2.5 w-2.5 rounded-full"
                      style={{ backgroundColor: STATE_DOT_COLOR[mascotState] }} />
-                <span className="text-sm text-gray-400">{STATE_LABEL[mascotState]}</span>
+                <span className="text-base font-medium text-gray-500">{STATE_LABEL[mascotState]}</span>
               </div>
             </div>
           </div>
