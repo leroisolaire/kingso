@@ -143,3 +143,14 @@ body {
 .dark-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(231, 62, 17, 0.5);
 }
+
+/* ─── Scrollbar claire (zone chat éditorial) ─── */
+.light-scroll::-webkit-scrollbar { width: 4px; }
+.light-scroll::-webkit-scrollbar-track { background: transparent; }
+.light-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 4px;
+}
+.light-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(231, 62, 17, 0.30);
+}
