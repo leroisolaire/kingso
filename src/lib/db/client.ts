@@ -5,7 +5,10 @@ import pg from 'pg'
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
 function createClient() {
-  const url = new URL(process.env.DATABASE_URL!)
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set. Vérifiez .env.local ou les secrets GitHub.')
+  }
+  const url = new URL(process.env.DATABASE_URL)
   const pool = new pg.Pool({
     host: url.hostname,
     port: Number(url.port) || 5432,
@@ -18,6 +21,13 @@ function createClient() {
   return new PrismaClient({ adapter })
 }
 
-export const db = globalForPrisma.prisma ?? createClient()
+// Proxy lazy : le client n'est créé que lors du premier accès (db.user, db.document…)
+// Cela permet de charger les variables d'environnement AVANT l'initialisation
+const handler: ProxyHandler<object> = {
+  get(_target, prop) {
+    const client = globalForPrisma.prisma ?? (globalForPrisma.prisma = createClient())
+    return (client as Record<string | symbol, unknown>)[prop]
+  },
+}
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+export const db = new Proxy({}, handler) as PrismaClient
