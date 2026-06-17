@@ -18,8 +18,8 @@ try {
 }
 
 // Import après loadEnvFile pour que DATABASE_URL etc. soient disponibles
-const { db } = await import('../src/lib/db/client.js')
-const { generateEmbedding, embeddingToSql } = await import('../src/lib/ai/embed.js')
+const { db } = await import('../src/lib/db/client')
+const { generateEmbedding, embeddingToSql } = await import('../src/lib/ai/embed')
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const BASE_URL   = 'https://www.leroisolaire.fr'
