@@ -10,38 +10,31 @@
 import * as cheerio from 'cheerio'
 import path from 'node:path'
 
-// En local : charge .env.local — en CI les variables viennent de l'environnement GitHub
+// Synchrone — doit être avant tout import qui lit process.env
+// En CI les variables viennent des secrets GitHub, ce fichier n'existe pas → on ignore l'erreur
 try {
   process.loadEnvFile(path.resolve(process.cwd(), '.env.local'))
-} catch {
-  // Pas de .env.local (ex. CI/CD) — les variables sont déjà dans process.env
-}
-
-// Import après loadEnvFile pour que DATABASE_URL etc. soient disponibles
-const { db } = await import('../src/lib/db/client')
-const { generateEmbedding, embeddingToSql } = await import('../src/lib/ai/embed')
+} catch { /* absent en CI */ }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const BASE_URL   = 'https://www.leroisolaire.fr'
-const MAX_PAGES  = Number(process.env.MAX_PAGES  ?? 80)
-const DELAY_MS   = Number(process.env.DELAY_MS   ?? 800)
+const BASE_URL  = 'https://www.leroisolaire.fr'
+const MAX_PAGES = Number(process.env.MAX_PAGES ?? 80)
+const DELAY_MS  = Number(process.env.DELAY_MS  ?? 800)
 
-// Pages/sections inutiles à exclure
 const SKIP_PATTERNS = [
   /\.(jpg|jpeg|png|gif|svg|webp|pdf|zip|mp4|mp3)$/i,
   /\/wp-admin/,
   /\/wp-login/,
   /\/wp-json/,
   /\/feed\/?$/,
-  /\?/,          // ignore URLs avec query string
-  /#/,           // ignore ancres
-  /\/page\//,    // ignore pages de pagination
+  /\?/,
+  /#/,
+  /\/page\//,
   /\/tag\//,
   /\/author\//,
   /\/category\//,
 ]
 
-// Sélecteurs des zones de contenu utile (par ordre de priorité)
 const CONTENT_SELECTORS = ['main', 'article', '.entry-content', '.page-content', '#content', '.content']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,9 +44,7 @@ function normalizeUrl(href: string, base: string): string | null {
     if (parsed.hostname !== new URL(BASE_URL).hostname) return null
     if (SKIP_PATTERNS.some((p) => p.test(parsed.href))) return null
     parsed.hash = ''
-    // Normalise le trailing slash
-    const url = parsed.href.replace(/\/$/, '') || BASE_URL
-    return url
+    return parsed.href.replace(/\/$/, '') || BASE_URL
   } catch {
     return null
   }
@@ -64,7 +55,6 @@ function extractContent($: cheerio.CheerioAPI): { title: string; text: string } 
     || $('title').text().replace(/[-|].*$/, '').trim()
     || 'Page Le Roi Solaire'
 
-  // Supprime les éléments non-contenu
   $('script, style, noscript, nav, header, footer, .menu, .nav, .navigation, .sidebar, .widget, .cookie, .breadcrumb, iframe, [aria-hidden="true"], .elementor-hidden').remove()
 
   let text = ''
@@ -77,30 +67,29 @@ function extractContent($: cheerio.CheerioAPI): { title: string; text: string } 
   }
   if (!text) text = $('body').text()
 
-  text = text
-    .replace(/\t/g, ' ')
-    .replace(/ {2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+  text = text.replace(/\t/g, ' ').replace(/ {2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 
   return { title, text }
 }
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function run() {
-  console.log(`\n🌐 Crawl de ${BASE_URL} (max ${MAX_PAGES} pages)\n`)
+  // Imports ici (inside async function) pour éviter le top-level await interdit en CJS
+  const { db } = await import('../src/lib/db/client')
+  const { generateEmbedding, embeddingToSql } = await import('../src/lib/ai/embed')
 
-  // Catégorie dédiée
+  console.log(`\nCrawl de ${BASE_URL} (max ${MAX_PAGES} pages)\n`)
+
   let category = await db.category.findFirst({ where: { name: 'Site Web Le Roi Solaire' } })
   if (!category) {
     category = await db.category.create({
       data: { name: 'Site Web Le Roi Solaire', description: 'Pages publiques du site leroisolaire.fr' },
     })
-    console.log('✓ Catégorie créée : Site Web Le Roi Solaire\n')
+    console.log('Categorie creee : Site Web Le Roi Solaire\n')
   } else {
-    console.log(`✓ Catégorie existante : ${category.id}\n`)
+    console.log(`Categorie existante : ${category.id}\n`)
   }
 
   const visited = new Set<string>()
@@ -114,13 +103,10 @@ async function run() {
     visited.add(url)
 
     try {
-      process.stdout.write(`[${saved + 1}] ${url} … `)
+      process.stdout.write(`[${saved + 1}] ${url} ... `)
 
       const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Kingso-Bot/1.0 (assistant Le Roi Solaire)',
-          'Accept': 'text/html',
-        },
+        headers: { 'User-Agent': 'Kingso-Bot/1.0', 'Accept': 'text/html' },
         signal: AbortSignal.timeout(10_000),
       })
 
@@ -131,7 +117,6 @@ async function run() {
       const html = await res.text()
       const $ = cheerio.load(html)
 
-      // Collecte les liens internes
       $('a[href]').each((_, el) => {
         const href = $(el).attr('href')
         if (!href) return
@@ -143,11 +128,9 @@ async function run() {
 
       if (text.length < 150) { console.log('skip (trop court)'); skipped++; continue }
 
-      // Vérifie si la page existe déjà
       const existing = await db.document.findFirst({ where: { fileUrl: url } })
-      if (existing) { console.log('déjà importée'); skipped++; continue }
+      if (existing) { console.log('deja importee'); skipped++; continue }
 
-      // Embedding + insertion
       const embedding = await generateEmbedding(`${title}\n\n${text}`)
       await db.$executeRaw`
         INSERT INTO "Document" (id, title, content, type, "categoryId", "fileUrl", embedding, "createdAt", "updatedAt")
@@ -163,7 +146,7 @@ async function run() {
         )
       `
 
-      console.log(`✓ "${title}" (${text.length} car.)`)
+      console.log(`OK "${title}" (${text.length} car.)`)
       saved++
 
       await delay(DELAY_MS)
@@ -174,7 +157,7 @@ async function run() {
     }
   }
 
-  console.log(`\n✅ Terminé — ${saved} pages importées, ${skipped} ignorées.`)
+  console.log(`\nTermine - ${saved} pages importees, ${skipped} ignorees.`)
   await db.$disconnect()
 }
 
