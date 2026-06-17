@@ -63,11 +63,13 @@ export function useChat() {
     setMascotState('thinking')
 
     try {
-      // Formater l'historique pour l'API Anthropic (rôles lowercase, sans le dernier msg utilisateur)
-      const history = messages.map((m) => ({
-        role: m.role === 'USER' ? 'user' : 'assistant',
-        content: m.content,
-      }))
+      // Formater l'historique pour l'API Anthropic — on exclut les messages sans contenu
+      const history = messages
+        .filter((m) => m.content)
+        .map((m) => ({
+          role: m.role === 'USER' ? 'user' : 'assistant',
+          content: m.content,
+        }))
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -79,7 +81,7 @@ export function useChat() {
       const assistantMessage: ChatMessage = {
         id: `msg-${Date.now()}-assistant`,
         role: 'ASSISTANT',
-        content: data.content,
+        content: data.content ?? data.error ?? 'Une erreur est survenue. Veuillez réessayer.',
         createdAt: new Date().toISOString(),
         documentsUsed: data.documentsUsed ?? [],
       }

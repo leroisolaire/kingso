@@ -33,7 +33,7 @@ const STATE_DOT_COLOR: Record<MascotState, string> = {
 const URL_REGEX = /(https?:\/\/[^\s]+)/g
 
 function MessageText({ content, isUser }: { content: string; isUser: boolean }) {
-  const parts = content.split(URL_REGEX)
+  const parts = (content ?? '').split(URL_REGEX)
   return (
     <>
       {parts.map((part, i) =>

@@ -72,3 +72,27 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model WebSource {
+  id          String    @id @default(cuid())
+  name        String
+  url         String    @unique
+  maxPages    Int       @default(80)
+  active      Boolean   @default(true)
+  lastCrawled DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  pages       WebPage[]
+}
+
+model WebPage {
+  id        String                      @id @default(cuid())
+  url       String                      @unique
+  title     String
+  content   String
+  embedding Unsupported("vector(1024)")?
+  sourceId  String
+  source    WebSource                   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  crawledAt DateTime                    @default(now())
+  updatedAt DateTime                    @updatedAt
+}

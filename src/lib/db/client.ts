@@ -21,13 +21,6 @@ function createClient() {
   return new PrismaClient({ adapter })
 }
 
-// Proxy lazy : le client n'est créé que lors du premier accès (db.user, db.document…)
-// Cela permet de charger les variables d'environnement AVANT l'initialisation
-const handler: ProxyHandler<object> = {
-  get(_target, prop) {
-    const client = globalForPrisma.prisma ?? (globalForPrisma.prisma = createClient())
-    return (client as Record<string | symbol, unknown>)[prop]
-  },
-}
+export const db = globalForPrisma.prisma ?? createClient()
 
-export const db = new Proxy({}, handler) as PrismaClient
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

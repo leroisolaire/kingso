@@ -6,7 +6,7 @@ export function buildSystemPrompt(results: SearchResult[]): string {
   // TODO: Affiner le prompt au fil des tests pour améliorer la précision des réponses.
 
   const context = results
-    .map((r, i) => `[Document ${i + 1}] ${r.document.title}\n${r.document.content}`)
+    .map((r, i) => `[Document ${i + 1}] ${r.title}\n${r.content}`)
     .join('\n\n---\n\n')
 
   return `Tu es Kingso, l'assistant intelligent de Le Roi Solaire.
