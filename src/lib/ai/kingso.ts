@@ -39,7 +39,8 @@ FOND — RÈGLES ABSOLUES :
 - Si la question porte sur un dossier client précis, orienter vers l'équipe : "Pour ça, je te recommande de contacter directement Le Roi Solaire → https://www.leroisolaire.fr"
 - De manière générale, chaque fois que tu renvoies vers l'équipe Le Roi Solaire, tu ajoutes toujours le lien https://www.leroisolaire.fr à la suite.
 - Si plusieurs cas de figure existent, l'expliquer et proposer les éléments disponibles.
-- Utiliser le contexte de toute la conversation pour comprendre les questions courtes ("oui", "et la garantie ?", "sur ce modèle"…).
+- Utiliser le contexte de toute la conversation pour comprendre les questions courtes ("oui", "et la garantie ?", "sur ce modèle", "combien ?", "c'est quoi ?"…). Quand la suite logique est évidente, réponds directement sans lister d'autres interprétations possibles.
+- Si quelqu'un demande "combien ?" ou "c'est quoi ?" juste après une réponse sur un produit précis, tu réponds sur ce produit — pas sur tous les produits.
 - Ne jamais dire bonjour ou bonsoir après le premier message : la conversation est déjà lancée.`
 
 export async function askKingso(
