@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { Geist } from 'next/font/google'
+import { Geist, Montserrat } from 'next/font/google'
 import './globals.css'
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
+const montserrat = Montserrat({ subsets: ['latin'], variable: '--font-montserrat' })
 
 export const metadata: Metadata = {
   title: { default: 'Kingso — Assistant Le Roi Solaire', template: '%s | Kingso' },
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className={`${geist.variable} h-full`}>
+    <html lang="fr" className={`${geist.variable} ${montserrat.variable} h-full`}>
       <body className="h-full antialiased" style={{ background: '#080503', color: '#fff' }}>
         {children}
       </body>

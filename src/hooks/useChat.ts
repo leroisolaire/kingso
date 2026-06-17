@@ -1,7 +1,16 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { ChatMessage, MascotState } from '@/types/chat'
+
+function getSessionToken() {
+  let token = sessionStorage.getItem('kingso_session')
+  if (!token) {
+    token = `session-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    sessionStorage.setItem('kingso_session', token)
+  }
+  return token
+}
 
 /* Mots-clés de test (tapés dans le chat) → état forcé instantanément */
 const TEST_KEYWORDS: Record<string, MascotState> = {
@@ -18,6 +27,11 @@ export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isTyping, setIsTyping] = useState(false)
   const [mascotState, setMascotState] = useState<MascotState>('wave')
+  const sessionToken = useRef<string | null>(null)
+
+  useEffect(() => {
+    sessionToken.current = getSessionToken()
+  }, [])
 
   // Bored après 30s d'inactivité en idle
   useEffect(() => {
@@ -49,10 +63,16 @@ export function useChat() {
     setMascotState('thinking')
 
     try {
+      // Formater l'historique pour l'API Anthropic (rôles lowercase, sans le dernier msg utilisateur)
+      const history = messages.map((m) => ({
+        role: m.role === 'USER' ? 'user' : 'assistant',
+        content: m.content,
+      }))
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content }),
+        body: JSON.stringify({ message: content, sessionToken: sessionToken.current, history }),
       })
       const data = await response.json()
 

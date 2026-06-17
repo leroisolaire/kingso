@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DocumentType {
+  PUBLIC
+  INTERNAL
+  FRANCHISE
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+model Category {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?
+  parent      Category?   @relation("SubCategories", fields: [parentId], references: [id])
+  children    Category[]  @relation("SubCategories")
+  createdAt   DateTime    @default(now())
+  documents   Document[]
+  faqs        Faq[]
+}
+
+model Document {
+  id         String       @id @default(cuid())
+  title      String
+  content    String
+  type       DocumentType @default(PUBLIC)
+  categoryId String?
+  category   Category?    @relation(fields: [categoryId], references: [id])
+  fileUrl    String?
+  embedding  Unsupported("vector(1024)")?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model Faq {
+  id         String    @id @default(cuid())
+  question   String
+  answer     String
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  published  Boolean   @default(false)
+  order      Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model History {
+  id               String   @id @default(cuid())
+  sessionToken     String
+  userMessage      String
+  assistantMessage String
+  documentsUsed    String[]
+  createdAt        DateTime @default(now())
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

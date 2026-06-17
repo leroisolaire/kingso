@@ -1,0 +1,40 @@
+name: Mise à jour base documentaire
+
+on:
+  schedule:
+    # Tous les lundis à 3h du matin (UTC) — adapte le jour/heure si besoin
+    - cron: '0 3 * * 1'
+  # Permet aussi de lancer manuellement depuis GitHub > Actions > Run workflow
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    name: Crawl leroisolaire.fr
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Générer le client Prisma
+        run: npx prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Lancer le crawl
+        run: npm run crawl
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          MAX_PAGES: '100'
+          DELAY_MS: '1000'

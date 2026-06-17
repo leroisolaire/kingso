@@ -1,27 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { askKingso } from '@/lib/ai/kingso'
+import { askKingso, type ConversationMessage } from '@/lib/ai/kingso'
 import { searchDocuments } from '@/lib/rag/search'
-
-// TODO: Implémenter le streaming avec ReadableStream pour une UX temps réel.
-// TODO: Sauvegarder la conversation en base via saveMessage() après la réponse.
-// TODO: Filtrer les types de documents selon le rôle de l'utilisateur connecté.
+import { db } from '@/lib/db/client'
 
 export async function POST(request: NextRequest) {
   try {
-    const { message } = await request.json()
+    const { message, sessionToken, history } = await request.json()
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message requis.' }, { status: 400 })
     }
 
-    const results = await searchDocuments(message, 3, ['PUBLIC'])
+    const session = sessionToken ?? `anon-${Date.now()}`
+
+    // Recherche vectorielle dans les documents publics
+    const results = await searchDocuments(message, 5, ['PUBLIC'])
     const documentIds = results.map((r) => r.document.id)
 
-    const response = await askKingso(
-      message,
-      results.map((r) => r.document.content).join('\n\n'),
-      documentIds
-    )
+    // Contexte envoyé à Claude : titre + contenu de chaque document trouvé
+    const context = results
+      .map((r) => `[${r.document.title}]\n${r.document.content}`)
+      .join('\n\n---\n\n')
+
+    // Historique des échanges précédents (max 10 messages = 5 échanges)
+    const conversationHistory: ConversationMessage[] = Array.isArray(history)
+      ? history.slice(-10)
+      : []
+
+    const response = await askKingso(message, context, documentIds, conversationHistory)
+
+    // Sauvegarde de l'échange en base
+    await db.history.create({
+      data: {
+        sessionToken: session,
+        userMessage: message,
+        assistantMessage: response.content,
+        documentsUsed: documentIds,
+      },
+    })
 
     return NextResponse.json(response)
   } catch (error) {

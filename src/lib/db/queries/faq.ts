@@ -1,38 +1,40 @@
-// TODO: Remplacer chaque fonction par une requête Prisma
-import { MOCK_FAQS } from '../fixtures'
+import { db } from '../client'
 import type { Faq } from '@/types/faq'
 
+function serialize(f: { createdAt: Date; updatedAt: Date; [key: string]: unknown }): Faq {
+  return { ...f, createdAt: f.createdAt.toISOString(), updatedAt: f.updatedAt.toISOString() } as Faq
+}
+
 export async function getAllFaqs(): Promise<Faq[]> {
-  // TODO: return db.faq.findMany({ orderBy: { order: 'asc' } })
-  return MOCK_FAQS
+  const faqs = await db.faq.findMany({ orderBy: { order: 'asc' } })
+  return faqs.map(serialize)
 }
 
 export async function getPublishedFaqs(): Promise<Faq[]> {
-  // TODO: return db.faq.findMany({ where: { published: true }, orderBy: { order: 'asc' } })
-  return MOCK_FAQS.filter((f) => f.published)
+  const faqs = await db.faq.findMany({ where: { published: true }, orderBy: { order: 'asc' } })
+  return faqs.map(serialize)
 }
 
 export async function getFaqById(id: string): Promise<Faq | null> {
-  // TODO: return db.faq.findUnique({ where: { id } })
-  return MOCK_FAQS.find((f) => f.id === id) ?? null
+  const faq = await db.faq.findUnique({ where: { id } })
+  return faq ? serialize(faq) : null
 }
 
 export async function createFaq(
   data: Omit<Faq, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Faq> {
-  // TODO: return db.faq.create({ data })
-  throw new Error('createFaq: non implémenté (attente Prisma)')
+  const faq = await db.faq.create({ data })
+  return serialize(faq)
 }
 
 export async function updateFaq(
   id: string,
   data: Partial<Omit<Faq, 'id' | 'createdAt'>>
 ): Promise<Faq> {
-  // TODO: return db.faq.update({ where: { id }, data })
-  throw new Error('updateFaq: non implémenté (attente Prisma)')
+  const faq = await db.faq.update({ where: { id }, data })
+  return serialize(faq)
 }
 
 export async function deleteFaq(id: string): Promise<void> {
-  // TODO: return db.faq.delete({ where: { id } })
-  throw new Error('deleteFaq: non implémenté (attente Prisma)')
+  await db.faq.delete({ where: { id } })
 }

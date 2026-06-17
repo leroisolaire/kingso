@@ -1,20 +1,23 @@
-// TODO: Remplacer chaque fonction par une requête Prisma
-import { MOCK_HISTORY } from '../fixtures'
+import { db } from '../client'
 import type { HistoryEntry } from '@/types/history'
 
+function serialize(h: { createdAt: Date; [key: string]: unknown }): HistoryEntry {
+  return { ...h, createdAt: h.createdAt.toISOString() } as HistoryEntry
+}
+
 export async function getAllHistory(): Promise<HistoryEntry[]> {
-  // TODO: return db.chatMessage.findMany({ orderBy: { createdAt: 'desc' } })
-  return MOCK_HISTORY
+  const entries = await db.history.findMany({ orderBy: { createdAt: 'desc' } })
+  return entries.map(serialize)
 }
 
 export async function getHistoryById(id: string): Promise<HistoryEntry | null> {
-  // TODO: return db.chatMessage.findUnique({ where: { id } })
-  return MOCK_HISTORY.find((h) => h.id === id) ?? null
+  const entry = await db.history.findUnique({ where: { id } })
+  return entry ? serialize(entry) : null
 }
 
 export async function saveMessage(
   data: Omit<HistoryEntry, 'id' | 'createdAt'>
 ): Promise<HistoryEntry> {
-  // TODO: return db.chatMessage.create({ data })
-  throw new Error('saveMessage: non implémenté (attente Prisma)')
+  const entry = await db.history.create({ data })
+  return serialize(entry)
 }

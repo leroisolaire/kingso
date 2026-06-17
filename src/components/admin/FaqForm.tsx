@@ -22,6 +22,9 @@ export default function FaqForm({ faq, categories, onSubmit, onCancel }: FaqForm
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const parents = categories.filter((c) => !c.parentId)
+  const children = (parentId: string) => categories.filter((c) => c.parentId === parentId)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!question.trim() || !answer.trim()) {
@@ -31,13 +34,7 @@ export default function FaqForm({ faq, categories, onSubmit, onCancel }: FaqForm
     setLoading(true)
     setError(null)
     try {
-      await onSubmit({
-        question,
-        answer,
-        categoryId: categoryId || null,
-        published,
-        order: faq?.order ?? 0,
-      })
+      await onSubmit({ question, answer, categoryId: categoryId || null, published, order: faq?.order ?? 0 })
     } catch {
       setError('Une erreur est survenue.')
     } finally {
@@ -68,12 +65,21 @@ export default function FaqForm({ faq, categories, onSubmit, onCancel }: FaqForm
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
           >
             <option value="">— Aucune —</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
+            {parents.map((parent) => {
+              const subs = children(parent.id)
+              return subs.length > 0 ? (
+                <optgroup key={parent.id} label={parent.name}>
+                  {subs.map((sub) => (
+                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={parent.id} value={parent.id}>{parent.name}</option>
+              )
+            })}
           </select>
         </div>
         <div className="flex items-end pb-0.5">

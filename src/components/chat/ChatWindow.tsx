@@ -29,6 +29,32 @@ const STATE_DOT_COLOR: Record<MascotState, string> = {
 }
 
 
+/* ── Texte avec URLs cliquables ── */
+const URL_REGEX = /(https?:\/\/[^\s]+)/g
+
+function MessageText({ content, isUser }: { content: string; isUser: boolean }) {
+  const parts = content.split(URL_REGEX)
+  return (
+    <>
+      {parts.map((part, i) =>
+        URL_REGEX.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={isUser ? 'underline text-white/80 hover:text-white' : 'underline text-amber-400 hover:text-amber-300'}
+          >
+            {part.replace(/^https?:\/\//, '')}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  )
+}
+
 /* ── Bulle de message ── */
 function MessageBubble({
   message,
@@ -93,7 +119,7 @@ function MessageBubble({
                 : { background: '#1e0e06', border: '1px solid rgba(231,62,17,0.18)' }
             }
           >
-            {message.content}
+            <MessageText content={message.content} isUser={isUser} />
           </div>
         </div>
 
@@ -185,7 +211,7 @@ export default function ChatWindow() {
           <div className="mt-1 text-center space-y-1">
             <h1
               className="font-black tracking-tight text-gray-900"
-              style={{ fontSize: 'clamp(3rem, 5vw, 5rem)', lineHeight: 1, letterSpacing: '-0.03em' }}
+              style={{ fontSize: 'clamp(3rem, 5vw, 5rem)', lineHeight: 1, letterSpacing: '-0.03em', fontFamily: 'var(--font-montserrat)' }}
             >
               Kingso
             </h1>
@@ -202,7 +228,7 @@ export default function ChatWindow() {
                   boxShadow: `0 0 7px ${STATE_DOT_COLOR[mascotState]}`,
                 }}
               />
-              <span className="text-xs text-gray-400 transition-all duration-500">
+              <span className="text-xs text-gray-400 transition-all duration-500" style={{ fontFamily: 'var(--font-montserrat)' }}>
                 {STATE_LABEL[mascotState]}
               </span>
             </div>
@@ -237,11 +263,11 @@ export default function ChatWindow() {
           <div className="relative z-10 flex flex-col items-center gap-2">
             <MascotDisplay state={mascotState} size={300} />
             <div className="text-center">
-              <h1 className="text-4xl font-black text-gray-900 tracking-tight">Kingso</h1>
+              <h1 className="text-4xl font-black text-gray-900 tracking-tight" style={{ fontFamily: 'var(--font-montserrat)' }}>Kingso</h1>
               <div className="flex items-center justify-center gap-2 mt-2" style={{ marginBottom: '12px' }}>
                 <div className="h-2.5 w-2.5 rounded-full"
                      style={{ backgroundColor: STATE_DOT_COLOR[mascotState] }} />
-                <span className="text-base font-medium text-gray-500">{STATE_LABEL[mascotState]}</span>
+                <span className="text-base font-medium text-gray-500" style={{ fontFamily: 'var(--font-montserrat)' }}>{STATE_LABEL[mascotState]}</span>
               </div>
             </div>
           </div>
@@ -253,7 +279,7 @@ export default function ChatWindow() {
             <div className="flex h-full flex-col justify-center py-8">
               <div className="flex items-end gap-3">
                 <div className="flex flex-col gap-1.5 max-w-[80%]">
-                  <span className="text-xs font-semibold ml-1" style={{ color: '#e73e11' }}>Kingso</span>
+                  <span className="text-xs font-semibold ml-1" style={{ color: '#e73e11', fontFamily: 'var(--font-montserrat)' }}>Kingso</span>
                   <div
                     className="relative rounded-2xl rounded-bl-sm px-5 py-4 text-sm leading-relaxed text-white/90"
                     style={{ background: '#1e0e06', border: '1px solid rgba(231,62,17,0.2)' }}
