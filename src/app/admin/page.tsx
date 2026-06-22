@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import StatsCard from '@/components/admin/StatsCard'
 import { getAllDocuments } from '@/lib/db/queries/documents'
 import { getAllCategories } from '@/lib/db/queries/categories'
@@ -36,10 +37,19 @@ export default async function AdminDashboardPage() {
       </div>
 
       <div className="mt-8 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 font-semibold text-gray-900">Dernières conversations</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-semibold text-gray-900">Dernières conversations</h2>
+          <Link href="/admin/history" className="text-sm text-amber-600 hover:underline">
+            Voir tout ({history.length})
+          </Link>
+        </div>
         <div className="space-y-3">
-          {history.slice(0, 3).map((entry) => (
-            <div key={entry.id} className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+          {history.slice(0, 5).map((entry) => (
+            <Link
+              key={entry.id}
+              href={`/admin/history/${entry.id}`}
+              className="flex items-start gap-3 rounded-lg bg-gray-50 p-3 hover:bg-amber-50 transition-colors"
+            >
               <span className="mt-0.5 text-base">💬</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">{entry.userMessage}</p>
@@ -48,7 +58,7 @@ export default async function AdminDashboardPage() {
               <span className="shrink-0 text-xs text-gray-400">
                 {new Date(entry.createdAt).toLocaleDateString('fr-FR')}
               </span>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
