@@ -48,9 +48,14 @@ export async function POST(request: NextRequest) {
     const results = await searchDocuments(searchQuery, 5, ['PUBLIC'])
     const documentIds = results.map((r) => r.document.id)
 
-    // Contexte envoyé à Claude : titre + contenu de chaque document trouvé
+    // Contexte envoyé à Claude : titre + URL source + contenu de chaque document trouvé
     const context = results
-      .map((r) => `[${r.document.title}]\n${r.document.content}`)
+      .map((r) => {
+        const header = r.document.fileUrl
+          ? `[${r.document.title}] (URL : ${r.document.fileUrl})`
+          : `[${r.document.title}]`
+        return `${header}\n${r.document.content}`
+      })
       .join('\n\n---\n\n')
 
     const response = await askKingso(message, context, documentIds, conversationHistory)
