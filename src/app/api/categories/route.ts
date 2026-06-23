@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllCategories, createCategory } from '@/lib/db/queries/categories'
+import { getSession } from '@/lib/auth/dal'
 
 export async function GET() {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const categories = await getAllCategories()
     return NextResponse.json(categories)
@@ -12,6 +14,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const body = await request.json()
     // TODO: Valider les données avec Zod

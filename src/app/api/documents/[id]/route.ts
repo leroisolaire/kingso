@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDocumentById, updateDocument, deleteDocument } from '@/lib/db/queries/documents'
+import { getSession } from '@/lib/auth/dal'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   const { id } = await params
   const document = await getDocumentById(id)
   if (!document) return NextResponse.json({ error: 'Non trouvé.' }, { status: 404 })
@@ -13,6 +15,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 }
 
 export async function PUT(request: NextRequest, { params }: Params) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const { id } = await params
     const body = await request.json()
@@ -26,6 +29,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const { id } = await params
     await deleteDocument(id)

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { logout } from '@/lib/auth/actions'
 
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
@@ -12,7 +13,11 @@ const navItems = [
   { href: '/admin/history', label: 'Historique', icon: '⊙' },
 ]
 
-export default function AdminSidebar() {
+interface AdminSidebarProps {
+  user: { email: string; name: string | null } | null
+}
+
+export default function AdminSidebar({ user }: AdminSidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -56,16 +61,23 @@ export default function AdminSidebar() {
       </nav>
 
       <div className="border-t border-slate-700/50 px-4 py-4">
-        {/* TODO: Afficher l'utilisateur connecté (NextAuth session) */}
         <div className="flex items-center gap-3">
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-600 text-xs font-semibold text-white">
-            A
+            {(user?.name ?? user?.email ?? '?').charAt(0).toUpperCase()}
           </span>
           <div className="flex-1 leading-tight">
-            <p className="text-sm font-medium text-white">Admin</p>
-            <p className="text-xs text-slate-400">admin@lrs.fr</p>
+            <p className="text-sm font-medium text-white">{user?.name ?? 'Admin'}</p>
+            <p className="text-xs text-slate-400">{user?.email}</p>
           </div>
         </div>
+        <form action={logout} className="mt-3">
+          <button
+            type="submit"
+            className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+          >
+            Déconnexion
+          </button>
+        </form>
       </div>
     </aside>
   )

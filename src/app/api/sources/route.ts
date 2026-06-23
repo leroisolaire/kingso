@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/client'
+import { getSession } from '@/lib/auth/dal'
 
 export async function GET() {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const sources = await db.webSource.findMany({
       orderBy: { createdAt: 'desc' },
@@ -16,6 +18,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   const { name, url, maxPages } = await request.json()
   if (!name || !url) return NextResponse.json({ error: 'Nom et URL requis.' }, { status: 400 })
 

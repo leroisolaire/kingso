@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, DOCUMENTS_BUCKET } from '@/lib/storage/client'
+import { getSession } from '@/lib/auth/dal'
 
 export async function POST(request: NextRequest) {
+  if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File | null

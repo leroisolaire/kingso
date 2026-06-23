@@ -12,9 +12,6 @@ Technologies :
 
 Règles générales :
 
-* Toujours privilégier du code simple et lisible.
-* Utiliser des composants réutilisables.
-* Optimiser le SEO.
 * Optimiser le responsive mobile.
 * Utiliser TypeScript correctement.
 * Expliquer les modifications avant les gros changements.
