@@ -17,6 +17,12 @@ export async function POST(request: NextRequest) {
     let text = ''
 
     if (name.endsWith('.pdf')) {
+      // pdfjs-dist (utilisé par pdf-parse) référence DOMMatrix au chargement du module,
+      // absent par défaut en Node.js — on le polyfill depuis @napi-rs/canvas avant l'import.
+      if (typeof globalThis.DOMMatrix === 'undefined') {
+        const { DOMMatrix } = await import('@napi-rs/canvas')
+        globalThis.DOMMatrix = DOMMatrix as unknown as typeof globalThis.DOMMatrix
+      }
       const { PDFParse } = await import('pdf-parse')
       const parser = new PDFParse({ data: buffer })
       const result = await parser.getText()
