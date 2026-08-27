@@ -3,6 +3,7 @@ import { askKingso, type ConversationMessage } from '@/lib/ai/kingso'
 import { searchDocuments } from '@/lib/rag/search'
 import { db } from '@/lib/db/client'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { hasChatAccess } from '@/lib/auth/chatAccess'
 
 export async function POST(request: NextRequest) {
   // Rate limiting par IP
@@ -44,8 +45,10 @@ export async function POST(request: NextRequest) {
       ? `${lastUserMsg} ${lastAssistantMsg.slice(0, 200)} ${message}`.trim()
       : message
 
-    // Recherche vectorielle dans les documents publics
-    const results = await searchDocuments(searchQuery, 5, ['PUBLIC'])
+    // Recherche vectorielle : documents publics, + internes/franchisés si connecté
+    const authenticated = await hasChatAccess()
+    const documentTypes = authenticated ? (['PUBLIC', 'INTERNAL', 'FRANCHISE'] as const) : (['PUBLIC'] as const)
+    const results = await searchDocuments(searchQuery, 5, [...documentTypes])
     const documentIds = results.map((r) => r.document.id)
 
     // Contexte envoyé à Claude : titre + URL source + contenu de chaque document trouvé

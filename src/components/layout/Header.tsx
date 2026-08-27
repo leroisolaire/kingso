@@ -1,6 +1,10 @@
 import Link from 'next/link'
+import ChatAuthButton from '@/components/layout/ChatAuthButton'
+import { hasChatAccess } from '@/lib/auth/chatAccess'
 
-export default function Header() {
+export default async function Header() {
+  const authenticated = await hasChatAccess()
+
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
@@ -30,6 +34,7 @@ export default function Header() {
           >
             FAQ
           </Link>
+          <ChatAuthButton authenticated={authenticated} />
         </nav>
       </div>
     </header>

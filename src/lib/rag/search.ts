@@ -10,16 +10,21 @@ export interface SearchResult {
   url?: string
 }
 
-export async function searchKnowledge(query: string, limit = 5): Promise<SearchResult[]> {
+export async function searchKnowledge(
+  query: string,
+  limit = 5,
+  types: Document['type'][] = ['PUBLIC'],
+): Promise<SearchResult[]> {
   const embedding = await generateEmbedding(query)
   const vec = embeddingToSql(embedding)
   const half = Math.ceil(limit / 2)
 
-  // Recherche dans les documents
+  // Recherche dans les documents (uniquement les types autorisés, ex. exclut INTERNAL)
   const docs = await db.$queryRaw<Array<{ id: string; title: string; content: string; fileUrl: string | null }>>`
     SELECT id, title, content, "fileUrl"
     FROM "Document"
     WHERE embedding IS NOT NULL
+      AND type = ANY(${types}::"DocumentType"[])
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${half}
   `
@@ -43,9 +48,9 @@ export async function searchKnowledge(query: string, limit = 5): Promise<SearchR
 export async function searchDocuments(
   query: string,
   topK = 5,
-  _types: Document['type'][] = ['PUBLIC'],
+  types: Document['type'][] = ['PUBLIC'],
 ) {
-  const results = await searchKnowledge(query, topK)
+  const results = await searchKnowledge(query, topK, types)
   return results.map((r, i) => ({
     document: {
       id: r.id, title: r.title, content: r.content,
