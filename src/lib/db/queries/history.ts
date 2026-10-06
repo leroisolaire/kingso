@@ -35,9 +35,36 @@ export async function getAllHistory(): Promise<HistoryEntry[]> {
   return entries.map(serialize)
 }
 
-export async function getHistoryById(id: string): Promise<HistoryEntry | null> {
-  const entry = await db.history.findUnique({ where: { id } })
-  return entry ? serialize(entry) : null
+export interface ConversationSummary {
+  sessionToken: string
+  firstMessage: string
+  messageCount: number
+  lastCreatedAt: string
+}
+
+export async function getConversations(): Promise<ConversationSummary[]> {
+  const entries = await db.history.findMany({ orderBy: { createdAt: 'asc' } })
+
+  const bySession = new Map<string, typeof entries>()
+  for (const entry of entries) {
+    const list = bySession.get(entry.sessionToken) ?? []
+    list.push(entry)
+    bySession.set(entry.sessionToken, list)
+  }
+
+  return Array.from(bySession.entries())
+    .map(([sessionToken, list]) => ({
+      sessionToken,
+      firstMessage: list[0].userMessage,
+      messageCount: list.length,
+      lastCreatedAt: list[list.length - 1].createdAt.toISOString(),
+    }))
+    .sort((a, b) => b.lastCreatedAt.localeCompare(a.lastCreatedAt))
+}
+
+export async function getHistoryBySession(sessionToken: string): Promise<HistoryEntry[]> {
+  const entries = await db.history.findMany({ where: { sessionToken }, orderBy: { createdAt: 'asc' } })
+  return entries.map(serialize)
 }
 
 export async function saveMessage(

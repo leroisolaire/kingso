@@ -1,53 +1,44 @@
 import Link from 'next/link'
 import Table from '@/components/ui/Table'
 import Badge from '@/components/ui/Badge'
-import type { HistoryEntry } from '@/types/history'
+import type { ConversationSummary } from '@/lib/db/queries/history'
 
 interface HistoryTableProps {
-  entries: HistoryEntry[]
+  conversations: ConversationSummary[]
 }
 
-export default function HistoryTable({ entries }: HistoryTableProps) {
+export default function HistoryTable({ conversations }: HistoryTableProps) {
   return (
     <Table
-      data={entries}
+      data={conversations}
       emptyMessage="Aucune conversation enregistrée."
       columns={[
         {
-          key: 'userMessage',
-          header: 'Question',
-          render: (entry) => (
-            <span className="line-clamp-1 max-w-xs text-gray-900">{entry.userMessage}</span>
+          key: 'firstMessage',
+          header: 'Première question',
+          render: (c) => (
+            <span className="line-clamp-1 max-w-sm text-gray-900">{c.firstMessage}</span>
           ),
         },
         {
-          key: 'assistantMessage',
-          header: 'Réponse',
-          render: (entry) => (
-            <span className="line-clamp-1 max-w-sm text-gray-600">{entry.assistantMessage}</span>
+          key: 'messageCount',
+          header: 'Messages',
+          render: (c) => (
+            <Badge variant={c.messageCount > 1 ? 'public' : 'neutral'}>{c.messageCount}</Badge>
           ),
         },
         {
-          key: 'docs',
-          header: 'Docs utilisés',
-          render: (entry) => (
-            <Badge variant={entry.documentsUsed.length > 0 ? 'public' : 'neutral'}>
-              {entry.documentsUsed.length} doc(s)
-            </Badge>
-          ),
-        },
-        {
-          key: 'createdAt',
-          header: 'Date',
-          render: (entry) => new Date(entry.createdAt).toLocaleDateString('fr-FR'),
+          key: 'lastCreatedAt',
+          header: 'Dernière activité',
+          render: (c) => new Date(c.lastCreatedAt).toLocaleString('fr-FR'),
         },
         {
           key: 'actions',
           header: '',
           className: 'w-16 text-right',
-          render: (entry) => (
+          render: (c) => (
             <Link
-              href={`/admin/history/${entry.id}`}
+              href={`/admin/history/${c.sessionToken}`}
               className="text-sm text-amber-600 hover:underline"
             >
               Voir
