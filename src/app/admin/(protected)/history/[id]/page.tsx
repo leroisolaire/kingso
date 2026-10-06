@@ -2,9 +2,16 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
-import { getHistoryById } from '@/lib/db/queries/history'
+import { getHistoryById, getUsedSources } from '@/lib/db/queries/history'
+import type { Document } from '@/types/document'
 
 export const metadata: Metadata = { title: 'Détail conversation | Admin' }
+
+const TYPE_VARIANT: Record<Document['type'], 'public' | 'internal' | 'franchise'> = {
+  PUBLIC: 'public',
+  INTERNAL: 'internal',
+  FRANCHISE: 'franchise',
+}
 
 interface Props {
   params: Promise<{ id: string }>
@@ -15,6 +22,8 @@ export default async function HistoryDetailPage({ params }: Props) {
   const entry = await getHistoryById(id)
 
   if (!entry) notFound()
+
+  const sources = await getUsedSources(entry.documentsUsed)
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -38,13 +47,27 @@ export default async function HistoryDetailPage({ params }: Props) {
 
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">Documents utilisés</p>
-          {entry.documentsUsed.length === 0 ? (
+          {sources.length === 0 ? (
             <Badge variant="neutral">Aucun document</Badge>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {entry.documentsUsed.map((docId) => (
-                <Badge key={docId} variant="internal">{docId}</Badge>
-              ))}
+              {sources.map((source) => {
+                if (source.deleted) {
+                  return <Badge key={source.id} variant="neutral">{source.title}</Badge>
+                }
+                if (source.kind === 'webpage') {
+                  return (
+                    <a key={source.id} href={source.url ?? undefined} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="neutral">🌐 {source.title}</Badge>
+                    </a>
+                  )
+                }
+                return (
+                  <Link key={source.id} href={`/admin/documents/${source.id}`}>
+                    <Badge variant={source.type ? TYPE_VARIANT[source.type] : 'neutral'}>{source.title}</Badge>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </div>
