@@ -1,0 +1,21 @@
+name: Keep-alive Supabase
+
+on:
+  schedule:
+    # Tous les jours à 6h (UTC) — évite la mise en pause du projet Supabase (plan Free, ~7 jours d'inactivité)
+    - cron: '0 6 * * *'
+  # Permet aussi de lancer manuellement depuis GitHub > Actions > Run workflow
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping base de données
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Requête SELECT 1
+        # psql est préinstallé sur les runners ubuntu-latest
+        run: psql "$DATABASE_URL" -c "SELECT 1;"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
