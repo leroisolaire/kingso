@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDocumentById, updateDocument, deleteDocument } from '@/lib/db/queries/documents'
 import { getSession } from '@/lib/auth/dal'
 
+export const maxDuration = 60
+
 interface Params {
   params: Promise<{ id: string }>
 }
@@ -19,8 +21,13 @@ export async function PUT(request: NextRequest, { params }: Params) {
   try {
     const { id } = await params
     const body = await request.json()
-    // TODO: Régénérer l'embedding si le contenu a changé
-    const document = await updateDocument(id, body)
+    // Seuls ces champs sont modifiables ; le texte modifié est redécoupé et réindexé
+    const document = await updateDocument(id, {
+      ...(typeof body.title === 'string' && body.title.trim() ? { title: body.title.trim() } : {}),
+      ...(typeof body.content === 'string' && body.content.trim() ? { content: body.content } : {}),
+      ...((['PUBLIC', 'INTERNAL', 'FRANCHISE'] as const).includes(body.type) ? { type: body.type } : {}),
+      ...(body.categoryId !== undefined ? { categoryId: typeof body.categoryId === 'string' && body.categoryId ? body.categoryId : null } : {}),
+    })
     return NextResponse.json(document)
   } catch (error) {
     console.error('[PUT /api/documents/:id]', error)

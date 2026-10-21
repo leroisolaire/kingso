@@ -6,11 +6,13 @@ import { logout } from '@/lib/auth/actions'
 
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
+  { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },
   { href: '/admin/sources', label: 'Sources web', icon: '⊕' },
   { href: '/admin/faq', label: 'FAQ', icon: '?' },
   { href: '/admin/history', label: 'Historique', icon: '⊙' },
+  { href: '/admin/escalations', label: 'Demandes SAV', icon: '✉' },
 ]
 
 interface AdminSidebarProps {

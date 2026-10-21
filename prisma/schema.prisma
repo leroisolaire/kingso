@@ -12,9 +12,34 @@ enum DocumentType {
   FRANCHISE
 }
 
+// Traitement d'un document importé : lecture du fichier → découpage → indexation
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}
+
 enum Role {
   ADMIN
   SUPER_ADMIN
+}
+
+// Public visé par un chat : un chat CLIENT ne lit jamais que les documents PUBLIC
+enum AssistantAudience {
+  CUSTOMER
+  STAFF
+}
+
+enum AssistantAccess {
+  PUBLIC
+  PASSWORD
+}
+
+enum AssistantStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
 }
 
 model Category {
@@ -27,19 +52,45 @@ model Category {
   createdAt   DateTime    @default(now())
   documents   Document[]
   faqs        Faq[]
+  assistants  Assistant[] @relation("AssistantCategories")
 }
 
 model Document {
-  id         String       @id @default(cuid())
-  title      String
+  id            String                       @id @default(cuid())
+  title         String
+  content       String
+  type          DocumentType                 @default(PUBLIC)
+  categoryId    String?
+  category      Category?                    @relation(fields: [categoryId], references: [id])
+  fileUrl       String? // ancien stockage public (documents créés avant l'import en masse)
+  storagePath   String? // fichier original dans le bucket privé "document-files"
+  fileName      String?
+  mimeType      String?
+  fileSize      Int?
+  contentHash   String? // SHA-256 du fichier : détection des doublons
+  pageCount     Int?
+  status        DocumentStatus               @default(READY)
+  statusMessage String?
+  embedding     Unsupported("vector(1024)")? // obsolète : la recherche se fait sur DocumentChunk
+  chunks        DocumentChunk[]
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  @@index([contentHash])
+}
+
+// Passage d'un document (~ une demi-page), indexé séparément pour une recherche précise
+model DocumentChunk {
+  id         String                       @id @default(cuid())
+  documentId String
+  document   Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  index      Int
   content    String
-  type       DocumentType @default(PUBLIC)
-  categoryId String?
-  category   Category?    @relation(fields: [categoryId], references: [id])
-  fileUrl    String?
+  pageStart  Int?
+  pageEnd    Int?
   embedding  Unsupported("vector(1024)")?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+
+  @@index([documentId])
 }
 
 model Faq {
@@ -55,12 +106,64 @@ model Faq {
 }
 
 model History {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   sessionToken     String
   userMessage      String
   assistantMessage String
   documentsUsed    String[]
-  createdAt        DateTime @default(now())
+  assistantId      String?
+  assistant        Assistant? @relation(fields: [assistantId], references: [id], onDelete: SetNull)
+  attachments      String[] // chemins dans le bucket privé chat-attachments
+  ipHash           String? // pour la limite de messages par visiteur
+  createdAt        DateTime   @default(now())
+
+  @@index([sessionToken])
+  @@index([assistantId, ipHash, createdAt])
+}
+
+// Un chat configurable depuis le back-office, accessible sur /c/{slug}
+model Assistant {
+  id                 String            @id @default(cuid())
+  slug               String            @unique
+  previousSlugs      String[] // anciennes URLs, redirigées vers le slug actuel
+  name               String
+  status             AssistantStatus   @default(DRAFT)
+  audience           AssistantAudience @default(CUSTOMER)
+  access             AssistantAccess   @default(PUBLIC)
+  accessPassword     String? // hash bcrypt
+  welcomeMessage     String
+  startButtons       String[]
+  suggestedQuestions String[]
+  instructions       String            @default("")
+  categories         Category[]        @relation("AssistantCategories")
+  webSources         WebSource[]       @relation("AssistantWebSources")
+  escalationEnabled  Boolean           @default(false)
+  escalationEmails   String[]
+  attachmentsEnabled Boolean           @default(true)
+  dailyMessageLimit  Int               @default(30)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  histories          History[]
+  escalations        Escalation[]
+}
+
+// Demande transmise au SAV depuis un chat
+model Escalation {
+  id           String    @id @default(cuid())
+  assistantId  String
+  assistant    Assistant @relation(fields: [assistantId], references: [id], onDelete: Cascade)
+  sessionToken String
+  firstName    String
+  lastName     String
+  phone        String
+  postalCode   String
+  email        String?
+  ipHash       String?
+  emailSent    Boolean   @default(false)
+  emailError   String?
+  createdAt    DateTime  @default(now())
+
+  @@index([sessionToken])
 }
 
 model User {
@@ -74,25 +177,26 @@ model User {
 }
 
 model WebSource {
-  id          String    @id @default(cuid())
+  id          String      @id @default(cuid())
   name        String
-  url         String    @unique
-  maxPages    Int       @default(80)
-  active      Boolean   @default(true)
+  url         String      @unique
+  maxPages    Int         @default(80)
+  active      Boolean     @default(true)
   lastCrawled DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   pages       WebPage[]
+  assistants  Assistant[] @relation("AssistantWebSources")
 }
 
 model WebPage {
-  id        String                      @id @default(cuid())
-  url       String                      @unique
+  id        String                       @id @default(cuid())
+  url       String                       @unique
   title     String
   content   String
   embedding Unsupported("vector(1024)")?
   sourceId  String
-  source    WebSource                   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  crawledAt DateTime                    @default(now())
-  updatedAt DateTime                    @updatedAt
+  source    WebSource                    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  crawledAt DateTime                     @default(now())
+  updatedAt DateTime                     @updatedAt
 }

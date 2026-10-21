@@ -8,6 +8,7 @@ const PROTECTED_API_PREFIXES = [
   '/api/faq',
   '/api/history',
   '/api/sources',
+  '/api/assistants',
 ]
 
 export async function proxy(request: NextRequest) {
@@ -43,5 +44,6 @@ export const config = {
     '/api/faq/:path*',
     '/api/history/:path*',
     '/api/sources/:path*',
+    '/api/assistants/:path*',
   ],
 }
