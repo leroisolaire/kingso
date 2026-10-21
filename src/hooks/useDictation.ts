@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 
 // Dictée vocale gratuite via la reconnaissance vocale intégrée au navigateur
 // (Safari iOS, Chrome Android / ordinateur). Absente ailleurs : le bouton est alors masqué.
+// Nécessite une page en https (ou localhost) : le navigateur refuse le micro sinon.
 
 interface RecognitionResult {
   readonly isFinal: boolean
