@@ -121,6 +121,14 @@ model History {
   @@index([assistantId, ipHash, createdAt])
 }
 
+// Titre résumé d'une conversation (généré par Claude), affiché dans l'historique du back-office
+model ConversationSummary {
+  sessionToken String   @id
+  summary      String
+  messageCount Int // nombre d'échanges pris en compte : régénéré quand la conversation avance
+  updatedAt    DateTime @updatedAt
+}
+
 // Un chat configurable depuis le back-office, accessible sur /c/{slug}
 model Assistant {
   id                 String            @id @default(cuid())

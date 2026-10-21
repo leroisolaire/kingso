@@ -22,32 +22,43 @@ interface StoredState {
   messages: AssistantMessage[]
   escalationOffered: boolean
   escalationSent: boolean
+  savedAt: number
 }
 
-// Sauvegarde dans sessionStorage : sur mobile, ouvrir l'appareil photo peut recharger
-// la page — le client ne doit pas perdre sa conversation.
+// Conversation gardée dans le navigateur (localStorage) : le client la retrouve en rouvrant
+// le lien plus tard (après avoir essayé une manipulation), ou si le téléphone recharge la
+// page en ouvrant l'appareil photo. Effacée au bout de 7 jours d'inactivité.
+const MAX_AGE_MS = 7 * 24 * 3600 * 1000
+
 function storageKey(slug: string) {
   return `kingso_chat_${slug}`
 }
 
 function loadState(slug: string): StoredState | null {
   try {
-    const raw = sessionStorage.getItem(storageKey(slug))
-    return raw ? (JSON.parse(raw) as StoredState) : null
+    const raw = localStorage.getItem(storageKey(slug))
+    if (!raw) return null
+    const state = JSON.parse(raw) as StoredState
+    if (!state.savedAt || Date.now() - state.savedAt > MAX_AGE_MS) {
+      localStorage.removeItem(storageKey(slug))
+      return null
+    }
+    return state
   } catch {
     return null
   }
 }
 
-function saveState(slug: string, state: StoredState) {
+function saveState(slug: string, state: Omit<StoredState, 'savedAt'>) {
+  const full: StoredState = { ...state, savedAt: Date.now() }
   try {
-    sessionStorage.setItem(storageKey(slug), JSON.stringify(state))
+    localStorage.setItem(storageKey(slug), JSON.stringify(full))
   } catch {
     // Quota dépassé (miniatures) : on garde au moins le texte
     try {
-      sessionStorage.setItem(storageKey(slug), JSON.stringify({
-        ...state,
-        messages: state.messages.map(({ thumbnails: _t, ...m }) => m),
+      localStorage.setItem(storageKey(slug), JSON.stringify({
+        ...full,
+        messages: full.messages.map(({ thumbnails: _t, ...m }) => m),
       }))
     } catch { /* stockage indisponible */ }
   }
@@ -65,6 +76,8 @@ export function useAssistantChat(slug: string) {
   const [escalationSent, setEscalationSent] = useState(false)
   const [limitReached, setLimitReached] = useState(false)
   const [hydrated, setHydrated] = useState(false)
+  /** Dernier envoi échoué (réseau ou serveur), pour le bouton « Réessayer » — non sauvegardé */
+  const [failed, setFailed] = useState<{ userMessageId: string; text: string; images: PreparedImage[] } | null>(null)
   const sessionToken = useRef('')
   const messagesRef = useRef<AssistantMessage[]>([])
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
@@ -123,6 +136,7 @@ export function useAssistantChat(slug: string) {
       createdAt: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMessage])
+    setFailed(null)
     setIsTyping(true)
     setMascotState('thinking')
     timers.current.forEach(clearTimeout)
@@ -143,6 +157,8 @@ export function useAssistantChat(slug: string) {
 
       if (!response.ok) {
         if (data.limitReached) setLimitReached(true)
+        // Erreur serveur passagère : on propose de renvoyer le même message
+        if (response.status >= 500) setFailed({ userMessageId: userMessage.id, text, images })
         setMessages((prev) => [...prev, {
           id: `msg-${Date.now()}-error`,
           role: 'ASSISTANT',
@@ -180,10 +196,11 @@ export function useAssistantChat(slug: string) {
       setMessages((prev) => [...prev, {
         id: `msg-${Date.now()}-error`,
         role: 'ASSISTANT',
-        content: 'Connexion impossible. Vérifiez votre réseau et réessayez.',
+        content: "Le message n'a pas pu être envoyé (connexion interrompue).",
         isError: true,
         createdAt: new Date().toISOString(),
       }])
+      setFailed({ userMessageId: userMessage.id, text, images })
       setMascotState('idle')
     } finally {
       setIsTyping(false)
@@ -210,7 +227,20 @@ export function useAssistantChat(slug: string) {
     }
   }, [slug])
 
+  /** Renvoie le dernier message qui n'a pas abouti (sans le dupliquer dans la conversation). */
+  const retryFailed = useCallback(() => {
+    if (!failed) return
+    const { userMessageId, text, images } = failed
+    // On retire le message échoué et l'erreur ; la référence est mise à jour tout de suite
+    // pour que l'historique envoyé ne contienne pas le message en double
+    const kept = messagesRef.current.filter((m) => m.id !== userMessageId && !m.isError)
+    messagesRef.current = kept
+    setMessages(kept)
+    sendMessage(text, images)
+  }, [failed, sendMessage])
+
   const resetConversation = useCallback(() => {
+    setFailed(null)
     sessionToken.current = newSessionToken()
     setMessages([])
     setEscalationOffered(false)
@@ -221,7 +251,7 @@ export function useAssistantChat(slug: string) {
 
   return {
     messages, isTyping, mascotState, hydrated,
-    escalationOffered, escalationSent, limitReached,
-    sendMessage, submitEscalation, handleInteraction, resetConversation,
+    escalationOffered, escalationSent, limitReached, canRetry: failed !== null,
+    sendMessage, retryFailed, submitEscalation, handleInteraction, resetConversation,
   }
 }

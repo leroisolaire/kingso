@@ -2,6 +2,7 @@
 
 import { useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { prepareImage, type PreparedImage } from '@/lib/images/compress'
+import { useDictation } from '@/hooks/useDictation'
 
 const MAX_IMAGES = 3
 
@@ -21,12 +22,37 @@ export default function Composer({ onSend, disabled = false, attachmentsEnabled,
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
+  /** Texte déjà saisi au moment où la dictée démarre : la dictée s'ajoute à la suite */
+  const dictationBaseRef = useRef('')
+
+  const resizeTextarea = () => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 128)}px`
+  }
+
+  const dictation = useDictation((transcript) => {
+    const base = dictationBaseRef.current
+    setValue(base && transcript ? `${base} ${transcript}` : base || transcript)
+    requestAnimationFrame(resizeTextarea)
+  })
+
+  const toggleDictation = () => {
+    if (dictation.listening) {
+      dictation.stop()
+      return
+    }
+    dictationBaseRef.current = value.trim()
+    dictation.start()
+  }
 
   const canSend = !disabled && !processing && (value.trim() !== '' || images.length > 0)
 
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
     if (!canSend) return
+    if (dictation.listening) dictation.stop()
     onSend(value.trim(), images)
     setValue('')
     setImages([])
@@ -98,7 +124,7 @@ export default function Composer({ onSend, disabled = false, attachmentsEnabled,
         </div>
       )}
 
-      {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
+      {(error || dictation.error) && <p className="mb-2 text-xs text-red-500">{error ?? dictation.error}</p>}
 
       {/* Menu pièce jointe */}
       {menuOpen && (
@@ -146,7 +172,9 @@ export default function Composer({ onSend, disabled = false, attachmentsEnabled,
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onFocus={onFocus}
-          placeholder={images.length > 0 ? 'Ajoutez un commentaire (facultatif)…' : 'Écrivez votre question…'}
+          placeholder={dictation.listening
+            ? 'Je vous écoute, parlez maintenant…'
+            : images.length > 0 ? 'Ajoutez un commentaire (facultatif)…' : 'Écrivez ou dictez votre question…'}
           disabled={disabled}
           rows={1}
           enterKeyHint="send"
@@ -154,6 +182,22 @@ export default function Composer({ onSend, disabled = false, attachmentsEnabled,
           className={`max-h-32 min-h-11 flex-1 resize-none bg-transparent py-2.5 text-base leading-6 text-gray-900 outline-none placeholder:text-gray-400 ${attachmentsEnabled ? '' : 'pl-3'}`}
           style={{ caretColor: '#e73e11' }}
         />
+
+        {dictation.supported && (
+          <button
+            type="button"
+            onClick={toggleDictation}
+            disabled={disabled}
+            aria-label={dictation.listening ? 'Arrêter la dictée' : 'Dicter un message'}
+            aria-pressed={dictation.listening}
+            className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+              dictation.listening ? 'bg-red-500 text-white' : 'text-gray-500 hover:bg-gray-100 active:bg-gray-100'
+            }`}
+          >
+            {dictation.listening && <span className="absolute inset-0 animate-ping rounded-full bg-red-400 opacity-60" />}
+            <MicIcon />
+          </button>
+        )}
 
         <button
           type="submit"
@@ -175,6 +219,14 @@ function CameraIcon({ className = 'h-5 w-5 text-gray-500' }: { className?: strin
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
+    </svg>
+  )
+}
+
+function MicIcon() {
+  return (
+    <svg className="relative h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
     </svg>
   )
 }

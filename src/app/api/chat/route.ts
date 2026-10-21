@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { askKingso, type ConversationMessage } from '@/lib/ai/kingso'
 import { searchKnowledge, formatContext, sourceIds } from '@/lib/rag/search'
 import { db } from '@/lib/db/client'
+import { refreshConversationSummary } from '@/lib/history/summary'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { hasChatAccess } from '@/lib/auth/chatAccess'
 
@@ -65,6 +66,9 @@ export async function POST(request: NextRequest) {
         documentsUsed: documentIds,
       },
     })
+
+    // Titre de la conversation pour l'historique, mis à jour après la réponse (ne ralentit pas le chat)
+    after(() => refreshConversationSummary(session))
 
     return NextResponse.json(response)
   } catch (error) {

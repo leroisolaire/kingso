@@ -37,6 +37,11 @@ export async function getAllHistory(): Promise<HistoryEntry[]> {
 
 export interface ConversationSummary {
   sessionToken: string
+  /** Titre généré par Claude (null tant qu'il n'est pas encore calculé) */
+  summary: string | null
+  /** À jour par rapport au nombre d'échanges ? */
+  summaryUpToDate: boolean
+  /** Premier message parlant (les boutons « Hitachi », « Atlantic »… sont ignorés) */
   firstMessage: string
   messageCount: number
   lastCreatedAt: string
@@ -46,15 +51,17 @@ export interface ConversationSummary {
 }
 
 export async function getConversations(assistantId?: string): Promise<ConversationSummary[]> {
-  const [entries, escalations] = await Promise.all([
+  const [entries, escalations, summaries] = await Promise.all([
     db.history.findMany({
       where: assistantId ? { assistantId } : undefined,
       orderBy: { createdAt: 'asc' },
       include: { assistant: { select: { name: true } } },
     }),
     db.escalation.findMany({ select: { sessionToken: true } }),
+    db.conversationSummary.findMany({ select: { sessionToken: true, summary: true, messageCount: true } }),
   ])
   const escalated = new Set(escalations.map((e) => e.sessionToken))
+  const summaryBySession = new Map(summaries.map((s) => [s.sessionToken, s]))
 
   const bySession = new Map<string, typeof entries>()
   for (const entry of entries) {
@@ -66,7 +73,9 @@ export async function getConversations(assistantId?: string): Promise<Conversati
   return Array.from(bySession.entries())
     .map(([sessionToken, list]) => ({
       sessionToken,
-      firstMessage: list[0].userMessage,
+      summary: summaryBySession.get(sessionToken)?.summary ?? null,
+      summaryUpToDate: summaryBySession.get(sessionToken)?.messageCount === list.length,
+      firstMessage: (list.find((e) => e.userMessage.trim().length > 30) ?? list[0]).userMessage,
       messageCount: list.length,
       lastCreatedAt: list[list.length - 1].createdAt.toISOString(),
       assistantName: list[0].assistant?.name ?? null,
@@ -77,11 +86,12 @@ export async function getConversations(assistantId?: string): Promise<Conversati
 }
 
 export async function getConversationMeta(sessionToken: string) {
-  const [first, escalations] = await Promise.all([
+  const [first, escalations, summary] = await Promise.all([
     db.history.findFirst({ where: { sessionToken }, select: { assistant: { select: { id: true, name: true } } } }),
     db.escalation.findMany({ where: { sessionToken }, orderBy: { createdAt: 'asc' } }),
+    db.conversationSummary.findUnique({ where: { sessionToken }, select: { summary: true } }),
   ])
-  return { assistant: first?.assistant ?? null, escalations }
+  return { assistant: first?.assistant ?? null, escalations, summary: summary?.summary ?? null }
 }
 
 export async function getHistoryBySession(sessionToken: string): Promise<HistoryEntry[]> {

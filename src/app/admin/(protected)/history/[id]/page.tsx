@@ -109,8 +109,10 @@ export default async function HistoryDetailPage({ params }: Props) {
         </h1>
       </div>
 
+      {meta.summary && <p className="-mt-3 mb-4 text-base font-medium text-gray-800">{meta.summary}</p>}
+
       {meta.assistant && (
-        <p className="-mt-3 mb-6 text-sm text-gray-500">
+        <p className="-mt-1 mb-6 text-sm text-gray-500">
           Chat : <Link href={`/admin/assistants/${meta.assistant.id}`} className="text-amber-600 hover:underline">{meta.assistant.name}</Link>
         </p>
       )}

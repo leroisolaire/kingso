@@ -14,10 +14,19 @@ export default function HistoryTable({ conversations }: HistoryTableProps) {
       emptyMessage="Aucune conversation enregistrée."
       columns={[
         {
-          key: 'firstMessage',
-          header: 'Première question',
+          key: 'summary',
+          header: 'Conversation',
           render: (c) => (
-            <span className="line-clamp-1 max-w-sm text-gray-900">{c.firstMessage}</span>
+            <Link href={`/admin/history/${c.sessionToken}`} className="block max-w-xl">
+              {c.summary ? (
+                <span className="line-clamp-2 font-medium text-gray-900">{c.summary}</span>
+              ) : (
+                <span className="line-clamp-1 text-gray-700">
+                  {c.firstMessage}
+                  <span className="ml-2 text-xs italic text-gray-400">(résumé en cours)</span>
+                </span>
+              )}
+            </Link>
           ),
         },
         {

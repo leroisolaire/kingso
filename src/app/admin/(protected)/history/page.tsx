@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { after } from 'next/server'
 import HistoryTable from '@/components/admin/HistoryTable'
 import { getConversations } from '@/lib/db/queries/history'
 import { db } from '@/lib/db/client'
+import { refreshConversationSummary } from '@/lib/history/summary'
 
 export const metadata: Metadata = { title: 'Historique | Admin' }
 
@@ -16,6 +18,15 @@ export default async function HistoryPage({ searchParams }: Props) {
     getConversations(assistantId),
     db.assistant.findMany({ select: { id: true, name: true }, orderBy: { createdAt: 'asc' } }),
   ])
+
+  // Conversations sans titre (anciennes) ou dont le titre est en retard : rattrapage en arrière-plan,
+  // par petits lots ; les titres apparaissent au prochain affichage de la page
+  const missing = conversations.filter((c) => !c.summaryUpToDate).slice(0, 10)
+  if (missing.length > 0) {
+    after(async () => {
+      for (const c of missing) await refreshConversationSummary(c.sessionToken)
+    })
+  }
 
   const pill = (active: boolean) =>
     `rounded-full px-3 py-1 text-sm ${active ? 'bg-slate-900 text-white' : 'bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50'}`

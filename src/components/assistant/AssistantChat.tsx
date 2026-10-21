@@ -114,8 +114,8 @@ function useVisualViewportHeight() {
 export default function AssistantChat({ assistant }: { assistant: PublicAssistant }) {
   const {
     messages, isTyping, mascotState, hydrated,
-    escalationOffered, escalationSent, limitReached,
-    sendMessage, submitEscalation, handleInteraction, resetConversation,
+    escalationOffered, escalationSent, limitReached, canRetry,
+    sendMessage, retryFailed, submitEscalation, handleInteraction, resetConversation,
   } = useAssistantChat(assistant.slug)
   // La carte SAV s'ouvre quand Kingso la propose ; le client peut la fermer puis la rouvrir
   const [dismissedOfferId, setDismissedOfferId] = useState<string | null>(null)
@@ -185,13 +185,18 @@ export default function AssistantChat({ assistant }: { assistant: PublicAssistan
           {messages.length > 0 && (
             <button
               type="button"
-              onClick={() => { closeCard(); resetConversation() }}
-              className="flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-gray-500 hover:bg-gray-100 active:bg-gray-100"
-              aria-label="Nouvelle conversation"
+              onClick={() => {
+                // Effacer la conversation ne doit jamais se faire par erreur
+                if (!window.confirm("Commencer une nouvelle conversation ?\n\nL'échange actuel sera effacé de cet écran.")) return
+                closeCard()
+                resetConversation()
+              }}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-gray-200 px-3 text-sm text-gray-600 hover:bg-gray-50 active:bg-gray-100"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
+              <span className="sm:hidden">Nouvelle</span>
               <span className="hidden sm:inline">Nouvelle conversation</span>
             </button>
           )}
@@ -225,12 +230,24 @@ export default function AssistantChat({ assistant }: { assistant: PublicAssistan
               </div>
             )}
 
-            {messages.map((m) =>
+            {messages.map((m, i) =>
               m.role === 'USER' ? (
                 <UserBubble key={m.id} message={m} />
               ) : (
                 <KingsoBubble key={m.id} error={m.isError}>
                   <MessageText content={m.content} />
+                  {m.isError && canRetry && i === messages.length - 1 && !isTyping && (
+                    <button
+                      type="button"
+                      onClick={retryFailed}
+                      className="mt-3 flex h-10 items-center gap-2 rounded-full bg-[#e73e11] px-4 text-sm font-semibold text-white"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                      </svg>
+                      Réessayer
+                    </button>
+                  )}
                 </KingsoBubble>
               ),
             )}

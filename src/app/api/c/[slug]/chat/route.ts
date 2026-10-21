@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { askAssistant, describeImages, type ImageInput } from '@/lib/ai/assistant'
 import type { ConversationMessage } from '@/lib/ai/kingso'
 import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
@@ -8,6 +8,7 @@ import { saveAttachments } from '@/lib/storage/attachments'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { getClientIp, hashIp } from '@/lib/visitor'
 import { db } from '@/lib/db/client'
+import { refreshConversationSummary } from '@/lib/history/summary'
 
 export const maxDuration = 60
 
@@ -136,6 +137,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         ipHash: isPreview ? null : ipHash,
       },
     })
+
+    // Titre de la conversation pour l'historique, mis à jour après la réponse (ne ralentit pas le chat)
+    after(() => refreshConversationSummary(sessionToken))
 
     return NextResponse.json({
       content: response.content,
