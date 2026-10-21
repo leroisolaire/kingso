@@ -40,10 +40,21 @@ export interface ConversationSummary {
   firstMessage: string
   messageCount: number
   lastCreatedAt: string
+  assistantName: string | null
+  photoCount: number
+  hasEscalation: boolean
 }
 
-export async function getConversations(): Promise<ConversationSummary[]> {
-  const entries = await db.history.findMany({ orderBy: { createdAt: 'asc' } })
+export async function getConversations(assistantId?: string): Promise<ConversationSummary[]> {
+  const [entries, escalations] = await Promise.all([
+    db.history.findMany({
+      where: assistantId ? { assistantId } : undefined,
+      orderBy: { createdAt: 'asc' },
+      include: { assistant: { select: { name: true } } },
+    }),
+    db.escalation.findMany({ select: { sessionToken: true } }),
+  ])
+  const escalated = new Set(escalations.map((e) => e.sessionToken))
 
   const bySession = new Map<string, typeof entries>()
   for (const entry of entries) {
@@ -58,8 +69,19 @@ export async function getConversations(): Promise<ConversationSummary[]> {
       firstMessage: list[0].userMessage,
       messageCount: list.length,
       lastCreatedAt: list[list.length - 1].createdAt.toISOString(),
+      assistantName: list[0].assistant?.name ?? null,
+      photoCount: list.reduce((n, e) => n + e.attachments.length, 0),
+      hasEscalation: escalated.has(sessionToken),
     }))
     .sort((a, b) => b.lastCreatedAt.localeCompare(a.lastCreatedAt))
+}
+
+export async function getConversationMeta(sessionToken: string) {
+  const [first, escalations] = await Promise.all([
+    db.history.findFirst({ where: { sessionToken }, select: { assistant: { select: { id: true, name: true } } } }),
+    db.escalation.findMany({ where: { sessionToken }, orderBy: { createdAt: 'asc' } }),
+  ])
+  return { assistant: first?.assistant ?? null, escalations }
 }
 
 export async function getHistoryBySession(sessionToken: string): Promise<HistoryEntry[]> {

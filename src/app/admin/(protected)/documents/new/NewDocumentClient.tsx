@@ -2,19 +2,20 @@
 
 import { useRouter } from 'next/navigation'
 import DocumentForm from '@/components/admin/DocumentForm'
-import type { Document } from '@/types/document'
+import type { DocumentInput } from '@/types/document'
 import type { Category } from '@/types/category'
 
 export default function NewDocumentClient({ categories }: { categories: Category[] }) {
   const router = useRouter()
 
-  const handleSubmit = async (data: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const handleSubmit = async (data: DocumentInput) => {
     await fetch('/api/documents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
     router.push('/admin/documents')
+    router.refresh()
   }
 
   return (

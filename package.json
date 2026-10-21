@@ -10,7 +10,9 @@
     "lint": "eslint",
     "seed": "tsx prisma/seed.ts",
     "crawl": "tsx scripts/crawl-website.ts",
-    "create-admin": "tsx scripts/create-admin-user.ts"
+    "create-admin": "tsx scripts/create-admin-user.ts",
+    "seed-pac": "tsx scripts/seed-pac-assistant.ts",
+    "reindex-documents": "tsx --conditions=react-server scripts/reindex-documents.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
@@ -28,6 +30,7 @@
     "prisma": "^7.8.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "server-only": "^0.0.1",
     "voyageai": "^0.4.0"
   },
   "devDependencies": {

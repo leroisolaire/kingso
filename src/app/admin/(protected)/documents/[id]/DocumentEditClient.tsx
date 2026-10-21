@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import DocumentForm from '@/components/admin/DocumentForm'
-import type { Document } from '@/types/document'
+import type { Document, DocumentInput } from '@/types/document'
 import type { Category } from '@/types/category'
 
 interface Props {
@@ -13,14 +13,14 @@ interface Props {
 export default function DocumentEditClient({ document, categories }: Props) {
   const router = useRouter()
 
-  const handleSubmit = async (data: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>) => {
-    // TODO: Appeler PUT /api/documents/[id]
+  const handleSubmit = async (data: DocumentInput) => {
     await fetch(`/api/documents/${document.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
     router.push('/admin/documents')
+    router.refresh()
   }
 
   return (

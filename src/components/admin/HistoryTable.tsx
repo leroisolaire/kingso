@@ -21,6 +21,17 @@ export default function HistoryTable({ conversations }: HistoryTableProps) {
           ),
         },
         {
+          key: 'assistantName',
+          header: 'Chat',
+          render: (c) => (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <span className="text-gray-600">{c.assistantName ?? 'Assistant général'}</span>
+              {c.photoCount > 0 && <Badge variant="neutral">📷 {c.photoCount}</Badge>}
+              {c.hasEscalation && <Badge variant="internal">Demande SAV</Badge>}
+            </span>
+          ),
+        },
+        {
           key: 'messageCount',
           header: 'Messages',
           render: (c) => (

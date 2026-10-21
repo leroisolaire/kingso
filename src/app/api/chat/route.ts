@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { askKingso, type ConversationMessage } from '@/lib/ai/kingso'
-import { searchDocuments } from '@/lib/rag/search'
+import { searchKnowledge, formatContext, sourceIds } from '@/lib/rag/search'
 import { db } from '@/lib/db/client'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { hasChatAccess } from '@/lib/auth/chatAccess'
@@ -48,18 +48,11 @@ export async function POST(request: NextRequest) {
     // Recherche vectorielle : documents publics, + internes/franchisés si connecté
     const authenticated = await hasChatAccess()
     const documentTypes = authenticated ? (['PUBLIC', 'INTERNAL', 'FRANCHISE'] as const) : (['PUBLIC'] as const)
-    const results = await searchDocuments(searchQuery, 5, [...documentTypes])
-    const documentIds = results.map((r) => r.document.id)
+    const results = await searchKnowledge(searchQuery, 6, [...documentTypes])
+    const documentIds = sourceIds(results)
 
-    // Contexte envoyé à Claude : titre + URL source + contenu de chaque document trouvé
-    const context = results
-      .map((r) => {
-        const header = r.document.fileUrl
-          ? `[${r.document.title}] (URL : ${r.document.fileUrl})`
-          : `[${r.document.title}]`
-        return `${header}\n${r.document.content}`
-      })
-      .join('\n\n---\n\n')
+    // Contexte envoyé à Claude : provenance (catégorie, titre, pages, URL) + passage
+    const context = formatContext(results)
 
     const response = await askKingso(message, context, documentIds, conversationHistory)
 

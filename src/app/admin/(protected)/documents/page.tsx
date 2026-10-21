@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import DocumentStatusBadge from '@/components/admin/DocumentStatusBadge'
 import type { Document } from '@/types/document'
 
 const TYPE_LABEL: Record<Document['type'], { label: string; variant: 'public' | 'internal' | 'franchise' }> = {
@@ -55,6 +56,23 @@ export default function DocumentsPage() {
     })
   }, [documents, sortKey, sortDir])
 
+  // Reprend le traitement d'un document interrompu (page fermée) ou en erreur
+  const [resuming, setResuming] = useState<string | null>(null)
+  const handleResume = async (doc: Document) => {
+    setResuming(doc.id)
+    let retry = doc.status === 'ERROR'
+    for (;;) {
+      const res = await fetch(`/api/documents/${doc.id}/process${retry ? '?retry=1' : ''}`, { method: 'POST' })
+      retry = false
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || result.status !== 'PROCESSING') break
+      setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, status: 'PROCESSING', statusMessage: result.message } : d)))
+      if (result.retryAfter) await new Promise((r) => setTimeout(r, result.retryAfter * 1000))
+    }
+    setResuming(null)
+    fetchDocuments()
+  }
+
   const handleDelete = async (id: string) => {
     if (!confirm('Supprimer ce document ? Cette action est irréversible.')) return
     await fetch(`/api/documents/${id}`, { method: 'DELETE' })
@@ -78,15 +96,20 @@ export default function DocumentsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
           <p className="mt-1 text-sm text-gray-500">{documents.length} document(s) dans la base</p>
         </div>
-        <Link href="/admin/documents/new">
-          <Button>+ Ajouter</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/documents/new">
+            <Button variant="secondary">+ Saisir un texte</Button>
+          </Link>
+          <Link href="/admin/documents/import">
+            <Button>Importer des fichiers</Button>
+          </Link>
+        </div>
       </div>
 
       {loading ? (
         <p className="text-sm text-gray-500">Chargement...</p>
       ) : sorted.length === 0 ? (
-        <p className="text-sm text-gray-500">Aucun document. Cliquez sur « Ajouter » pour commencer.</p>
+        <p className="text-sm text-gray-500">Aucun document. Cliquez sur « Importer des fichiers » pour commencer.</p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-sm">
@@ -94,7 +117,8 @@ export default function DocumentsPage() {
               <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
                 <ThSortable label="Titre" col="title" />
                 <ThSortable label="Catégorie" col="categoryName" />
-                <ThSortable label="Type" col="type" />
+                <ThSortable label="Visibilité" col="type" />
+                <th className="px-5 py-3">Statut</th>
                 <ThSortable label="Mis à jour" col="updatedAt" />
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
@@ -113,13 +137,34 @@ export default function DocumentsPage() {
                   <td className="px-5 py-4">
                     <Badge variant={TYPE_LABEL[doc.type].variant}>{TYPE_LABEL[doc.type].label}</Badge>
                   </td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-col items-start gap-1">
+                      <DocumentStatusBadge status={doc.status} message={doc.statusMessage} />
+                      {doc.status === 'READY' && doc.chunkCount === 0 && (
+                        <span className="text-xs text-red-600">Non indexé</span>
+                      )}
+                      {doc.status && doc.status !== 'READY' && (
+                        <>
+                          {doc.statusMessage && <span className="max-w-[220px] text-xs text-gray-500">{doc.statusMessage}</span>}
+                          <button
+                            type="button"
+                            onClick={() => handleResume(doc)}
+                            disabled={resuming !== null}
+                            className="text-xs font-medium text-amber-600 hover:underline disabled:opacity-50"
+                          >
+                            {resuming === doc.id ? 'Traitement…' : doc.status === 'ERROR' ? 'Relancer' : 'Reprendre'}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-gray-500">
                     {new Date(doc.updatedAt).toLocaleDateString('fr-FR')}
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-4">
-                      {doc.fileUrl && (
-                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer"
+                      {(doc.fileUrl || doc.storagePath) && (
+                        <a href={`/api/documents/${doc.id}/file`} target="_blank" rel="noopener noreferrer"
                           className="text-gray-400 hover:text-amber-600 hover:underline">
                           Consulter
                         </a>

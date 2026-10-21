@@ -28,6 +28,13 @@ export function useChat() {
   const [isTyping, setIsTyping] = useState(false)
   const [mascotState, setMascotState] = useState<MascotState>('wave')
   const sessionToken = useRef<string | null>(null)
+  // Référence toujours à jour : sendMessage est mémorisé une seule fois ([]), lire `messages`
+  // directement donnerait la liste vide du premier rendu et l'historique ne serait jamais envoyé.
+  const messagesRef = useRef<ChatMessage[]>([])
+
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
 
   useEffect(() => {
     sessionToken.current = getSessionToken()
@@ -64,7 +71,7 @@ export function useChat() {
 
     try {
       // Formater l'historique pour l'API Anthropic — on exclut les messages sans contenu
-      const history = messages
+      const history = messagesRef.current
         .filter((m) => m.content)
         .map((m) => ({
           role: m.role === 'USER' ? 'user' : 'assistant',
