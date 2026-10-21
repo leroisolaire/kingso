@@ -39,7 +39,7 @@ export async function getDocumentById(id: string): Promise<Document | null> {
 }
 
 export async function findDocumentByHash(contentHash: string) {
-  return db.document.findFirst({ where: { contentHash }, select: { id: true, title: true } })
+  return db.document.findFirst({ where: { contentHash }, select: { id: true, title: true, status: true } })
 }
 
 /** Création manuelle (texte saisi) : découpage + indexation immédiate. */

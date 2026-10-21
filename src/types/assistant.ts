@@ -50,7 +50,7 @@ export interface AssistantInput {
   dailyMessageLimit: number
 }
 
-/** Ce que la page publique /c/{slug} reçoit — aucune donnée sensible. */
+/** Ce que la page publique /{slug} reçoit — aucune donnée sensible. */
 export interface PublicAssistant {
   slug: string
   name: string

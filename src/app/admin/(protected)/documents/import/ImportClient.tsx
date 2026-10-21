@@ -188,7 +188,14 @@ export default function ImportClient({ initialCategories }: { initialCategories:
     const target = await prep.json()
     if (!prep.ok) throw new Error(target.error ?? 'Préparation impossible')
     if (target.duplicate) {
-      update(item.key, { state: 'duplicate', message: `« ${target.duplicate.title} »`, documentId: target.duplicate.id })
+      const dup = target.duplicate as { id: string; title: string; status: string }
+      if (dup.status === 'READY') {
+        update(item.key, { state: 'duplicate', message: `« ${dup.title} »`, documentId: dup.id })
+        return
+      }
+      // Déjà importé mais en erreur ou inachevé : on relance son traitement
+      update(item.key, { state: 'processing', documentId: dup.id, message: 'Déjà importé, traitement relancé…' })
+      await runProcessing(item.key, dup.id, dup.status === 'ERROR')
       return
     }
 
@@ -202,18 +209,23 @@ export default function ImportClient({ initialCategories }: { initialCategories:
       throw new Error(`Envoi impossible : ${uploadError.message}`)
     }
 
-    // Traitement (lecture, découpage, indexation) : relancé jusqu'à la fin
     update(item.key, { state: 'processing', message: 'Lecture du fichier…' })
+    await runProcessing(item.key, target.id, false)
+  }
+
+  /** Traitement (lecture, découpage, indexation) : relancé jusqu'à la fin. */
+  const runProcessing = async (key: string, documentId: string, retry: boolean) => {
     for (;;) {
-      const res = await fetch(`/api/documents/${target.id}/process`, { method: 'POST' })
+      const res = await fetch(`/api/documents/${documentId}/process${retry ? '?retry=1' : ''}`, { method: 'POST' })
+      retry = false
       const result = await res.json().catch(() => ({ error: `Erreur ${res.status}` }))
       if (!res.ok) throw new Error(result.error ?? `Erreur ${res.status}`)
       if (result.status === 'READY') {
-        update(item.key, { state: 'done', message: undefined })
+        update(key, { state: 'done', message: undefined })
         return
       }
       if (result.status === 'ERROR') throw new Error(result.message ?? 'Traitement impossible')
-      update(item.key, { message: result.message ?? undefined })
+      update(key, { message: result.message ?? undefined })
       if (result.retryAfter) await sleep(result.retryAfter * 1000)
     }
   }

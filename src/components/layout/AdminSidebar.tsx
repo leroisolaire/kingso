@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/lib/auth/actions'
@@ -25,9 +26,7 @@ export default function AdminSidebar({ user }: AdminSidebarProps) {
   return (
     <aside className="flex h-full w-64 flex-col bg-slate-900 text-slate-300">
       <div className="flex h-16 items-center gap-3 border-b border-slate-700/50 px-6">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">
-          K
-        </span>
+        <Image src="/kingso-avatar-96.png" alt="Kingso" width={32} height={32} className="h-8 w-8 shrink-0 rounded-full bg-white object-cover" />
         <div className="leading-tight">
           <p className="text-sm font-semibold text-white">Kingso</p>
           <p className="text-xs text-slate-400">Back-office</p>

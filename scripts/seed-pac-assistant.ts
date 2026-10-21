@@ -1,5 +1,5 @@
 /**
- * Crée le chat « Kingso PAC clients » (/c/pac) en BROUILLON, ainsi que les sous-catégories
+ * Crée le chat « Kingso PAC clients » (/pac) en BROUILLON, ainsi que les sous-catégories
  * Hitachi et Atlantic sous « Pompe à Chaleur (PAC) ». Idempotent : ne modifie rien d'existant.
  * Usage : npm run seed-pac
  */
@@ -33,7 +33,7 @@ async function main() {
   }
 
   if (await db.assistant.findUnique({ where: { slug: 'pac' } })) {
-    console.log('Le chat /c/pac existe déjà — rien à faire.')
+    console.log('Le chat /pac existe déjà — rien à faire.')
     return
   }
 
@@ -63,7 +63,7 @@ async function main() {
       categories: { connect: [{ id: pac.id }, ...(pannesPac ? [{ id: pannesPac.id }] : [])] },
     },
   })
-  console.log('✓ Chat « Kingso PAC clients » créé en brouillon : /c/pac')
+  console.log('✓ Chat « Kingso PAC clients » créé en brouillon : /pac')
 }
 
 main()

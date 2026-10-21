@@ -49,7 +49,7 @@ export default function AssistantEditor({ assistant, categories, webSources }: P
         </div>
         {assistant && (
           <div className="flex gap-2">
-            <a href={`/c/${assistant.slug}`} target="_blank" rel="noopener noreferrer">
+            <a href={`/${assistant.slug}`} target="_blank" rel="noopener noreferrer">
               <Button type="button" variant="secondary" size="sm">Tester ↗</Button>
             </a>
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>Supprimer</Button>
@@ -68,7 +68,7 @@ export default function AssistantEditor({ assistant, categories, webSources }: P
       {assistant && (
         <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Supprimer ce chat ?">
           <p className="text-sm text-gray-600">
-            Le lien /c/{assistant.slug} ne fonctionnera plus. Les conversations restent dans l&apos;historique, mais les demandes SAV de ce chat seront supprimées.
+            Le lien /{assistant.slug} ne fonctionnera plus. Les conversations restent dans l&apos;historique, mais les demandes SAV de ce chat seront supprimées.
             Pour simplement couper l&apos;accès, préférez le statut « Désactivé ».
           </p>
           <div className="mt-5 flex justify-end gap-3">

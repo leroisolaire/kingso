@@ -2,7 +2,11 @@ import { SLUG_REGEX } from '@/lib/db/queries/assistants'
 import type { AssistantInput } from '@/types/assistant'
 
 /** Préfixes déjà utilisés par l'application : interdits comme URL de chat. */
-const RESERVED_SLUGS = ['admin', 'api', 'c', 'chat', 'faq', 'login', 'logout']
+const RESERVED_SLUGS = [
+  'admin', 'api', 'c', 'chat', 'faq', 'login', 'logout',
+  // fichiers et routes gérés par Next.js
+  '_next', 'favicon', 'icon', 'apple-icon', 'robots', 'sitemap', 'manifest',
+]
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 

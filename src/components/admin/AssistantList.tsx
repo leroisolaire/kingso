@@ -20,7 +20,7 @@ export default function AssistantList({ assistants }: { assistants: AssistantSum
   const [busy, setBusy] = useState<string | null>(null)
 
   const copy = async (slug: string) => {
-    await navigator.clipboard.writeText(`${origin}/c/${slug}`)
+    await navigator.clipboard.writeText(`${origin}/${slug}`)
     setCopied(slug)
     setTimeout(() => setCopied(null), 1500)
   }
@@ -56,7 +56,7 @@ export default function AssistantList({ assistants }: { assistants: AssistantSum
               </Badge>
               {a.access === 'PASSWORD' && <Badge variant="neutral">🔒 Mot de passe</Badge>}
             </div>
-            <p className="mt-1 truncate font-mono text-xs text-gray-500">/c/{a.slug}</p>
+            <p className="mt-1 truncate font-mono text-xs text-gray-500">/{a.slug}</p>
             <p className="mt-1 text-xs text-gray-400">
               {a.conversationCount} conversation{a.conversationCount > 1 ? 's' : ''}
               {a.escalationEnabled && ` · ${a.escalationCount} demande${a.escalationCount > 1 ? 's' : ''} SAV`}
@@ -67,7 +67,7 @@ export default function AssistantList({ assistants }: { assistants: AssistantSum
             <button type="button" onClick={() => copy(a.slug)} className="text-gray-600 hover:text-gray-900">
               {copied === a.slug ? '✓ Copié' : 'Copier le lien'}
             </button>
-            <a href={`/c/${a.slug}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-900">
+            <a href={`/${a.slug}`} target="_blank" rel="noopener noreferrer" className="text-gray-600 hover:text-gray-900">
               {a.status === 'ACTIVE' ? 'Ouvrir' : 'Aperçu'} ↗
             </a>
             <Link href={`/admin/history?assistant=${a.id}`} className="text-gray-600 hover:text-gray-900">Historique</Link>

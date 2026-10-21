@@ -111,8 +111,8 @@ export default function DocumentsPage() {
       ) : sorted.length === 0 ? (
         <p className="text-sm text-gray-500">Aucun document. Cliquez sur « Importer des fichiers » pour commencer.</p>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
                 <ThSortable label="Titre" col="title" />

@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import ChatAuthButton from '@/components/layout/ChatAuthButton'
 import { hasChatAccess } from '@/lib/auth/chatAccess'
@@ -9,9 +10,7 @@ export default async function Header() {
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white">
-            K
-          </span>
+          <Image src="/kingso-avatar-96.png" alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
           <span className="font-semibold text-gray-900">Kingso</span>
         </Link>
 

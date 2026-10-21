@@ -134,7 +134,7 @@ export default function AssistantForm({ assistant, categories, webSources, onSub
         <div className="flex flex-col gap-1">
           <label htmlFor="slug" className="text-sm font-medium text-gray-700">Adresse (URL)</label>
           <div className="flex items-center overflow-hidden rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-amber-500">
-            <span className="shrink-0 bg-gray-50 px-3 py-2 text-sm text-gray-500">{origin ? `${origin.replace(/^https?:\/\//, '')}` : ''}/c/</span>
+            <span className="shrink-0 bg-gray-50 px-3 py-2 text-sm text-gray-500">{origin ? `${origin.replace(/^https?:\/\//, '')}` : ''}/</span>
             <input
               id="slug"
               value={slug}
@@ -147,7 +147,7 @@ export default function AssistantForm({ assistant, categories, webSources, onSub
           <FieldError message={fields.slug} />
           {slugChanged && (
             <p className="text-xs text-amber-700">
-              ⚠ Les liens déjà envoyés avec /c/{assistant.slug} seront redirigés automatiquement vers la nouvelle adresse.
+              ⚠ Les liens déjà envoyés avec /{assistant.slug} seront redirigés automatiquement vers la nouvelle adresse.
             </p>
           )}
         </div>

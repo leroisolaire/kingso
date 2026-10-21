@@ -7,6 +7,7 @@ import Textarea from '@/components/ui/Textarea'
 import Button from '@/components/ui/Button'
 import DocumentStatusBadge from '@/components/admin/DocumentStatusBadge'
 import CategorySelect from '@/components/admin/CategorySelect'
+import ReprocessButton from '@/components/admin/ReprocessButton'
 import type { Document, DocumentInput, DocumentType } from '@/types/document'
 import type { Category } from '@/types/category'
 
@@ -58,6 +59,12 @@ export default function DocumentForm({ document, categories, onSubmit, onCancel 
       {document && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
           <DocumentStatusBadge status={document.status} message={document.statusMessage} />
+          {document.status && document.status !== 'READY' && (
+            <>
+              {document.statusMessage && <span className="text-xs text-gray-500">{document.statusMessage}</span>}
+              <ReprocessButton documentId={document.id} status={document.status} />
+            </>
+          )}
           {document.pageCount ? <span>{document.pageCount} pages</span> : null}
           {document.chunkCount ? <span>{document.chunkCount} passages indexés</span> : null}
           {hasFile && (
