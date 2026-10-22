@@ -19,6 +19,9 @@ export interface Document {
   driveFileId?: string | null
   /** Emplacement dans le Drive, ex. « Public/PAC/Hitachi/Yutaki 2016 » */
   drivePath?: string | null
+  /** Non nul : document mis de côté, non utilisé par les chats */
+  reviewState?: 'TO_SORT' | 'CONFIDENTIAL' | 'IGNORED' | null
+  reviewNote?: string | null
   createdAt: string
   updatedAt: string
 }

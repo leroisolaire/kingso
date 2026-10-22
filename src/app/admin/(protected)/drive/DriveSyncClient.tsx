@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Button from '@/components/ui/Button'
 import type { SyncReport, QueueResult } from '@/lib/drive/sync'
+import { DriveAlerts, DriveRecap, type DriveAlert, type DriveEventItem } from './DriveAlerts'
 
 interface Props {
   serviceAccountEmail: string | null
@@ -12,6 +13,8 @@ interface Props {
   mappings: { folderName: string; categoryName: string }[]
   categories: { id: string; name: string }[]
   counts: { driveDocs: number; pending: number; errors: number }
+  alerts: DriveAlert[]
+  events: DriveEventItem[]
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -58,7 +61,7 @@ function ReportSummary({ report }: { report: SyncReport }) {
   )
 }
 
-export default function DriveSyncClient({ serviceAccountEmail, source, mappings, categories, counts }: Props) {
+export default function DriveSyncClient({ serviceAccountEmail, source, mappings, categories, counts, alerts, events }: Props) {
   const router = useRouter()
   const [link, setLink] = useState('')
   const [saving, setSaving] = useState(false)
@@ -142,9 +145,12 @@ export default function DriveSyncClient({ serviceAccountEmail, source, mappings,
         <h1 className="text-2xl font-bold text-gray-900">Google Drive</h1>
         <p className="mt-1 text-sm text-gray-500">
           Le Drive fait foi : les documents ajoutés, modifiés, déplacés ou supprimés dans le Drive le sont aussi dans Kingso,
-          chaque nuit ou avec « Synchroniser maintenant ».
+          chaque nuit ou avec « Synchroniser maintenant ». Les fichiers déposés dans <strong>Public/À trier</strong> ou
+          <strong> Interne/À trier</strong> sont classés, renommés et rangés automatiquement.
         </p>
       </div>
+
+      <DriveAlerts alerts={alerts} />
 
       <Card title="Connexion">
         {!serviceAccountEmail ? (
@@ -207,6 +213,12 @@ export default function DriveSyncClient({ serviceAccountEmail, source, mappings,
               {processErrors.map((e, i) => <p key={i} className="text-red-600">✗ {e.title} : {e.message}</p>)}
             </div>
           )}
+        </Card>
+      )}
+
+      {source && (
+        <Card title="Récapitulatif">
+          <DriveRecap events={events} />
         </Card>
       )}
 

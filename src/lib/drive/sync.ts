@@ -5,18 +5,23 @@ import { db } from '@/lib/db/client'
 import { SUPPORTED_EXTENSIONS, fileExtension } from '@/lib/documents/extract'
 import { deleteDocumentFile, processDocument, rechunkFromContent, uploadDocumentFile } from '@/lib/documents/process'
 import {
-  FOLDER_MIME, downloadFile, effectiveFileName, getFile, isGoogleNative, listChildren, type DriveFile,
+  FOLDER_MIME, downloadFile, effectiveFileName, findOrCreateFolder, getFile, isGoogleNative, listChildren, moveFile,
+  type DriveFile,
 } from './google'
+import { classifyDocument, type FamilyOption } from './classify'
 
 // Synchronisation Drive → base documentaire. Le Drive fait foi :
 //   1er niveau de dossier = visibilité (Public / Interne / Franchisé)
 //   2e niveau = catégorie (même nom, ou correspondance enregistrée dans le back-office)
 //   3e niveau = sous-catégorie (créée si besoin) ; plus profond : rangé dans la sous-catégorie
+//   Public/À trier et Interne/À trier : Kingso classe, renomme et déplace lui-même le fichier
+// Tout document Public passe un contrôle de confidentialité avant de servir aux chats clients.
 // En deux temps : scanDrive (rapide : rattache, déplace, renomme, supprime, repère les
 // nouveautés) puis processDriveQueue (téléchargement + lecture + indexation, reprenable).
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 const MAX_DEPTH = 8
+export const SORT_FOLDER = 'a trier' // « À trier », comparé sans accent ni majuscule
 
 const VISIBILITY: Record<string, DocumentType> = {
   public: 'PUBLIC',
@@ -65,10 +70,12 @@ async function makeResolver() {
   const mappingByName = new Map(mappings.map((m) => [m.folderName, m.categoryId]))
   const unmapped = new Set<string>()
 
-  async function resolve(path: string[]): Promise<{ type: DocumentType; categoryId: string } | { skip: string }> {
+  async function resolve(path: string[]): Promise<{ type: DocumentType; categoryId: string | null; toSort: boolean } | { skip: string }> {
     const type = path[0] ? VISIBILITY[normalize(path[0])] : undefined
     if (!type) return { skip: 'hors des dossiers Public / Interne / Franchisé' }
-    if (path.length < 2) return { skip: 'à ranger dans un dossier de catégorie (ex. Public/PAC/…)' }
+    if (path.length < 2) return { skip: 'à ranger dans un dossier de catégorie, ou dans « À trier »' }
+    // Déposé dans « À trier » : Kingso le classera après l'avoir lu
+    if (normalize(path[1]) === SORT_FOLDER) return { type, categoryId: null, toSort: true }
 
     const folder = path[1]
     const parent = mappingByName.get(normalize(folder))
@@ -77,7 +84,7 @@ async function makeResolver() {
       unmapped.add(folder)
       return { skip: `dossier « ${folder} » sans catégorie correspondante` }
     }
-    if (path.length < 3) return { type, categoryId: parent }
+    if (path.length < 3) return { type, categoryId: parent, toSort: false }
 
     const subName = path[2].trim()
     let sub = categories.find((c) => c.parentId === parent && normalize(c.name) === normalize(subName))
@@ -86,7 +93,7 @@ async function makeResolver() {
       categories.push(created)
       sub = created
     }
-    return { type, categoryId: sub.id }
+    return { type, categoryId: sub.id, toSort: false }
   }
 
   return { resolve, unmapped }
@@ -116,7 +123,10 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
     const { resolve, unmapped } = await makeResolver()
     const linkedDocs = await db.document.findMany({
       where: { driveFileId: { not: null } },
-      select: { id: true, title: true, content: true, type: true, categoryId: true, status: true, driveFileId: true, driveMd5: true, driveModifiedTime: true, drivePath: true },
+      select: {
+        id: true, title: true, content: true, type: true, categoryId: true, status: true, reviewState: true,
+        driveFileId: true, driveMd5: true, driveModifiedTime: true, drivePath: true,
+      },
     })
     const byDriveId = new Map(linkedDocs.map((d) => [d.driveFileId!, d]))
     const seen = new Set<string>()
@@ -147,20 +157,35 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
 
       if (existing) {
         const data: Prisma.DocumentUpdateInput = {}
-        if (existing.type !== target.type) data.type = target.type
-        if (existing.categoryId !== target.categoryId) data.category = { connect: { id: target.categoryId } }
+        if (existing.categoryId !== target.categoryId) {
+          data.category = target.categoryId ? { connect: { id: target.categoryId } } : { disconnect: true }
+        }
         if (existing.drivePath !== drivePath) data.drivePath = drivePath
         const renamed = existing.title !== title
         if (renamed) data.title = title
+        // Changement de visibilité ou remis dans « À trier » : contrôles à refaire
+        if (existing.type !== target.type || (target.toSort && existing.reviewState !== 'TO_SORT')) {
+          data.type = target.type
+          data.reviewState = target.toSort ? 'TO_SORT' : null
+          data.reviewNote = null
+          data.classifiedAt = null
+        } else if (target.toSort) {
+          data.classifiedAt = null // pas encore rangé (erreur à la dernière tentative ?) : on réessaie
+        }
 
         if (contentChanged(existing, file)) {
           // Nouvelle version du fichier : retéléchargée et retraitée par processDriveQueue
           await db.documentChunk.deleteMany({ where: { documentId: existing.id } })
           await db.document.update({
             where: { id: existing.id },
-            data: { ...data, driveMd5: null, status: 'PENDING', statusMessage: 'Modifié dans le Drive : à retraiter' },
+            data: {
+              ...data, driveMd5: null, status: 'PENDING', statusMessage: 'Modifié dans le Drive : à retraiter',
+              // Nouvelle version : contrôle de confidentialité / classement à refaire
+              reviewState: target.toSort ? 'TO_SORT' : null, reviewNote: null, classifiedAt: null,
+            },
           })
           report.modified++
+          await logDriveEvent('MODIFIED', title, `${drivePath}/${file.name}`, existing.id)
         } else if (Object.keys(data).length > 0) {
           await db.document.update({ where: { id: existing.id }, data })
           // Le titre fait partie de l'indexation de chaque passage
@@ -183,6 +208,7 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
           data: {
             driveFileId: file.id, driveMd5: file.md5Checksum ?? null, driveModifiedTime: new Date(file.modifiedTime),
             drivePath, type: target.type, categoryId: target.categoryId, title,
+            reviewState: target.toSort ? 'TO_SORT' : null,
           },
         })
         if (imported.title !== title && imported.status === 'READY') await rechunkFromContent(imported.id, imported.content)
@@ -191,15 +217,18 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
       }
 
       // Nouveau fichier : créé en attente, téléchargé et traité par processDriveQueue
-      await db.document.create({
+      const created = await db.document.create({
+        select: { id: true },
         data: {
           title, content: '', type: target.type, categoryId: target.categoryId,
+          reviewState: target.toSort ? 'TO_SORT' : null,
           driveFileId: file.id, drivePath, fileName, mimeType: file.mimeType,
           fileSize: file.size ? Number(file.size) : null,
           status: 'PENDING', statusMessage: 'Nouveau dans le Drive : à télécharger',
         },
       })
       report.created++
+      await logDriveEvent('NEW', title, `${drivePath}/${file.name}`, created.id)
     }
 
     // Fichiers retirés du Drive (ou sortis des dossiers synchronisés) : retirés de Kingso.
@@ -210,6 +239,7 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
         const removed = await db.document.delete({ where: { id: doc.id }, select: { storagePath: true } })
         if (removed.storagePath) await deleteDocumentFile(removed.storagePath)
         report.deleted++
+        await logDriveEvent('DELETED', doc.title, `${doc.drivePath ?? ''} (retiré du Drive)`)
       }
     }
 
@@ -274,10 +304,134 @@ export interface QueueResult {
 }
 
 /** Étape 2 : traite les documents Drive en attente, dans le temps imparti (relancer tant que remaining > 0). */
+/** Documents Drive à classer (« À trier ») ou à contrôler (Public pas encore vérifié). */
+const toClassifyWhere: Prisma.DocumentWhereInput = {
+  driveFileId: { not: null },
+  status: 'READY',
+  classifiedAt: null,
+  OR: [{ reviewState: 'TO_SORT' }, { type: 'PUBLIC', reviewState: null }],
+}
+
+export async function logDriveEvent(kind: string, title: string, detail?: string, documentId?: string) {
+  await db.driveEvent.create({ data: { kind, title, detail, documentId } }).catch(() => {})
+}
+
+/** Familles connues : dossiers de 2e niveau du Drive (avec leurs marques) et catégories principales. */
+async function loadFamilies(rootId: string): Promise<FamilyOption[]> {
+  const [categories, mappings] = await Promise.all([
+    db.category.findMany({ select: { id: true, name: true, parentId: true } }),
+    db.driveCategoryMapping.findMany(),
+  ])
+  const byFolder = new Map<string, FamilyOption>()
+  const categoryNameOf = (folder: string) => {
+    const id = mappings.find((m) => m.folderName === normalize(folder))?.categoryId
+      ?? categories.find((c) => !c.parentId && normalize(c.name) === normalize(folder))?.id
+    return categories.find((c) => c.id === id)?.name ?? folder
+  }
+
+  for (const vis of (await listChildren(rootId)).filter((f) => f.mimeType === FOLDER_MIME)) {
+    for (const family of (await listChildren(vis.id)).filter((f) => f.mimeType === FOLDER_MIME && normalize(f.name) !== SORT_FOLDER)) {
+      const brands = (await listChildren(family.id)).filter((f) => f.mimeType === FOLDER_MIME).map((f) => f.name)
+      const known = byFolder.get(normalize(family.name))
+      if (known) known.brands = [...new Set([...known.brands, ...brands])]
+      else byFolder.set(normalize(family.name), { folder: family.name, category: categoryNameOf(family.name), brands })
+    }
+  }
+  // Catégories principales sans dossier dans le Drive (ex. « Photovoltaïque (PV) »)
+  for (const c of categories.filter((c) => !c.parentId)) {
+    const hasFolder = [...byFolder.values()].some((f) => f.category === c.name)
+    if (!hasFolder) {
+      byFolder.set(normalize(c.name), { folder: c.name, category: c.name, brands: categories.filter((s) => s.parentId === c.id).map((s) => s.name) })
+    }
+  }
+  return [...byFolder.values()]
+}
+
+/** Catégorie (et sous-catégorie de marque) correspondant au dossier de famille, créées si besoin. */
+async function ensureCategory(familyFolder: string, brand: string): Promise<{ categoryId: string; createdFamily: boolean }> {
+  const mapping = await db.driveCategoryMapping.findUnique({ where: { folderName: normalize(familyFolder) } })
+  const parents = await db.category.findMany({ where: { parentId: null }, select: { id: true, name: true } })
+  let parentId = mapping?.categoryId ?? parents.find((c) => normalize(c.name) === normalize(familyFolder))?.id
+  let createdFamily = false
+  if (!parentId) {
+    parentId = (await db.category.create({ data: { name: familyFolder }, select: { id: true } })).id
+    createdFamily = true
+  }
+  if (!brand) return { categoryId: parentId, createdFamily }
+  const subs = await db.category.findMany({ where: { parentId }, select: { id: true, name: true } })
+  const sub = subs.find((c) => normalize(c.name) === normalize(brand))
+    ?? await db.category.create({ data: { name: brand, parentId }, select: { id: true, name: true } })
+  return { categoryId: sub.id, createdFamily }
+}
+
+/** Classe (« À trier ») et/ou contrôle (Public) un document lu. Renvoie false s'il n'y a plus rien à faire. */
+async function classifyNext(rootId: string, result: QueueResult): Promise<boolean> {
+  const doc = await db.document.findFirst({
+    where: toClassifyWhere,
+    orderBy: { updatedAt: 'asc' },
+    select: { id: true, title: true, content: true, type: true, fileName: true, drivePath: true, driveFileId: true, reviewState: true },
+  })
+  if (!doc) return false
+
+  const visibility = doc.type === 'PUBLIC' ? 'PUBLIC' : 'INTERNAL'
+  try {
+    const c = await classifyDocument({
+      fileName: doc.fileName ?? doc.title,
+      visibility,
+      families: await loadFamilies(rootId),
+      content: doc.content,
+    })
+    const reviewNote = c.confidential ? c.reasons.join(' ; ') || 'Contenu jugé confidentiel' : null
+
+    if (doc.reviewState === 'TO_SORT') {
+      // Rangement : <visibilité>/<famille>/<marque>, fichier renommé avec un titre clair
+      const visName = doc.drivePath?.split('/')[0] || (visibility === 'PUBLIC' ? 'Public' : 'Interne')
+      const visId = await findOrCreateFolder(rootId, visName)
+      const familyId = await findOrCreateFolder(visId, c.family)
+      const targetId = c.brand ? await findOrCreateFolder(familyId, c.brand) : familyId
+      const driveFile = await getFile(doc.driveFileId!)
+      const ext = isGoogleNative(driveFile.mimeType) ? '' : fileExtension(driveFile.name)
+      const newName = ext ? `${c.title}.${ext}` : c.title
+      await moveFile(doc.driveFileId!, targetId, newName)
+
+      const { categoryId, createdFamily } = await ensureCategory(c.family, c.brand)
+      if (createdFamily) await logDriveEvent('FAMILY_CREATED', c.family, `Nouvelle famille créée pour « ${c.title} »`)
+
+      const newPath = [visName, c.family, c.brand].filter(Boolean).join('/')
+      await db.document.update({
+        where: { id: doc.id },
+        data: {
+          title: c.title, categoryId, drivePath: newPath, ...(ext ? { fileName: newName } : {}),
+          reviewState: c.confidential ? 'CONFIDENTIAL' : null, reviewNote, classifiedAt: new Date(),
+        },
+      })
+      // Le titre fait partie de l'indexation de chaque passage
+      if (c.title !== doc.title) await rechunkFromContent(doc.id, doc.content)
+      await logDriveEvent('SORTED', c.title, `${doc.drivePath ?? ''}/${driveFile.name} → ${newPath}/${newName}`, doc.id)
+      result.processed.push(`${c.title} (rangé dans ${newPath})`)
+    } else {
+      await db.document.update({
+        where: { id: doc.id },
+        data: { classifiedAt: new Date(), ...(c.confidential ? { reviewState: 'CONFIDENTIAL', reviewNote } : {}) },
+      })
+    }
+    if (c.confidential) await logDriveEvent('CONFIDENTIAL', c.title, reviewNote ?? undefined, doc.id)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    // Retenté à la prochaine synchronisation ; le document reste hors des chats en attendant
+    await db.document.update({ where: { id: doc.id }, data: { classifiedAt: new Date(), reviewNote: `Erreur de classement : ${message}`.slice(0, 500) } })
+    await logDriveEvent('ERROR', doc.title, message, doc.id)
+    result.errors.push({ title: doc.title, message })
+  }
+  return true
+}
+
+/** Étape 2 : télécharge et indexe les documents Drive en attente, puis les classe / contrôle (relancer tant que remaining > 0). */
 export async function processDriveQueue(budgetMs = 240_000): Promise<QueueResult> {
   const started = Date.now()
   const result: QueueResult = { remaining: 0, processed: [], errors: [] }
   const pendingWhere: Prisma.DocumentWhereInput = { driveFileId: { not: null }, status: { in: ['PENDING', 'PROCESSING'] } }
+  const source = await db.driveSource.findFirst({ select: { folderId: true } })
 
   while (Date.now() - started < budgetMs - 20_000) {
     const doc = await db.document.findFirst({
@@ -285,7 +439,11 @@ export async function processDriveQueue(budgetMs = 240_000): Promise<QueueResult
       orderBy: { updatedAt: 'asc' },
       select: { id: true, title: true, driveFileId: true, driveMd5: true },
     })
-    if (!doc) break
+    if (!doc) {
+      // Plus rien à lire : classement / contrôle de confidentialité des documents lus
+      if (source && await classifyNext(source.folderId, result)) continue
+      break
+    }
 
     try {
       if (doc.driveMd5 === null) {
@@ -310,6 +468,10 @@ export async function processDriveQueue(budgetMs = 240_000): Promise<QueueResult
     }
   }
 
-  result.remaining = await db.document.count({ where: pendingWhere })
+  const [pending, toClassify] = await Promise.all([
+    db.document.count({ where: pendingWhere }),
+    db.document.count({ where: toClassifyWhere }),
+  ])
+  result.remaining = pending + toClassify
   return result
 }

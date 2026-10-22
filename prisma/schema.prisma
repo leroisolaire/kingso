@@ -20,6 +20,13 @@ enum DocumentStatus {
   ERROR
 }
 
+// Contrôle d'un document avant qu'il serve aux chats (null = utilisable)
+enum DocumentReview {
+  TO_SORT // déposé dans « À trier » : Kingso doit le classer
+  CONFIDENTIAL // dans Public mais semble confidentiel : en attente de validation
+  IGNORED // écarté par l'équipe
+}
+
 enum Role {
   ADMIN
   SUPER_ADMIN
@@ -77,6 +84,10 @@ model Document {
   driveMd5          String? // empreinte Drive du fichier traité (null = à (re)télécharger)
   driveModifiedTime DateTime?
   drivePath         String? // emplacement dans le Drive, ex. « Public/PAC/Hitachi »
+  reviewState       DocumentReview? // non nul = exclu des chats
+  reviewNote        String? // raison de l'alerte (tarifs, données clients…)
+  proposedPath      String? // rangement proposé par Kingso pour un document mis de côté
+  classifiedAt      DateTime? // contrôle de confidentialité / classement fait pour cette version
   embedding         Unsupported("vector(1024)")? // obsolète : la recherche se fait sur DocumentChunk
   chunks            DocumentChunk[]
   createdAt         DateTime                     @default(now())
@@ -147,6 +158,18 @@ model DriveCategoryMapping {
   folderName String   @id // en minuscules
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+// Journal des actions de la synchronisation Drive (récapitulatif du back-office)
+model DriveEvent {
+  id         String   @id @default(cuid())
+  kind       String // SORTED, RENAMED, FAMILY_CREATED, CONFIDENTIAL, ERROR…
+  title      String
+  detail     String?
+  documentId String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // Titre résumé d'une conversation (généré par Claude), affiché dans l'historique du back-office

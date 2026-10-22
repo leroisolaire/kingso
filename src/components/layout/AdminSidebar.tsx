@@ -20,9 +20,11 @@ const navItems = [
 
 interface AdminSidebarProps {
   user: { email: string; name: string | null } | null
+  /** Pastilles d'alerte par lien (ex. documents Drive à valider) */
+  badges?: Record<string, number>
 }
 
-export default function AdminSidebar({ user }: AdminSidebarProps) {
+export default function AdminSidebar({ user, badges = {} }: AdminSidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -56,6 +58,9 @@ export default function AdminSidebar({ user }: AdminSidebarProps) {
                 >
                   <span className="text-base">{item.icon}</span>
                   {item.label}
+                  {badges[item.href] > 0 && (
+                    <span className="ml-auto rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">{badges[item.href]}</span>
+                  )}
                 </Link>
               </li>
             )

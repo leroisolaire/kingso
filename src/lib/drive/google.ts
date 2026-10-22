@@ -1,10 +1,11 @@
 import 'server-only'
 import { SignJWT, importPKCS8 } from 'jose'
 
-// Accès en LECTURE SEULE à Google Drive via un compte de service (API REST, sans SDK).
+// Accès à Google Drive via un compte de service (API REST, sans SDK) : lecture, et pour le
+// rangement automatique création de dossiers, déplacement et renommage (jamais de suppression).
 // Variable GOOGLE_SERVICE_ACCOUNT_KEY : contenu du fichier .json de la clé, encodé en base64.
 
-const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+const SCOPE = 'https://www.googleapis.com/auth/drive'
 const API = 'https://www.googleapis.com/drive/v3'
 export const FOLDER_MIME = 'application/vnd.google-apps.folder'
 
@@ -65,14 +66,28 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.value
 }
 
-async function driveFetch(path: string, params: Record<string, string> = {}): Promise<Response> {
+async function driveFetch(
+  path: string,
+  params: Record<string, string> = {},
+  init: { method?: string; body?: unknown } = {},
+): Promise<Response> {
   const url = new URL(`${API}${path}`)
   for (const [k, v] of Object.entries({ supportsAllDrives: 'true', ...params })) url.searchParams.set(k, v)
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${await getAccessToken()}` } })
+  const res = await fetch(url, {
+    method: init.method ?? 'GET',
+    headers: {
+      Authorization: `Bearer ${await getAccessToken()}`,
+      ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const reason = body?.error?.message ?? `HTTP ${res.status}`
     if (res.status === 404) throw new Error(`Élément introuvable dans Google Drive, ou non partagé avec le compte de service (${reason}).`)
+    if (res.status === 403 && init.method && init.method !== 'GET') {
+      throw new Error(`Modification refusée par Google Drive : le compte de service doit être « Gestionnaire de contenu » du Drive partagé (${reason}).`)
+    }
     throw new Error(`Google Drive : ${reason}`)
   }
   return res
@@ -159,6 +174,29 @@ export async function listSharedFolders(): Promise<{ id: string; name: string }[
     pageSize: '100',
   })
   return (await res.json()).files ?? []
+}
+
+/** Sous-dossier `name` de `parentId` (comparaison sans accents ni majuscules), créé s'il manque. */
+export async function findOrCreateFolder(parentId: string, name: string): Promise<string> {
+  const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
+  const existing = (await listChildren(parentId)).find((f) => f.mimeType === FOLDER_MIME && norm(f.name) === norm(name))
+  if (existing) return existing.id
+  const res = await driveFetch('/files', { fields: 'id' }, {
+    method: 'POST',
+    body: { name: name.trim(), mimeType: FOLDER_MIME, parents: [parentId] },
+  })
+  return (await res.json()).id
+}
+
+/** Déplace un fichier dans `folderId` (et le renomme si `newName` est fourni). */
+export async function moveFile(fileId: string, folderId: string, newName?: string): Promise<void> {
+  const current = await driveFetch(`/files/${fileId}`, { fields: 'parents' })
+  const parents: string[] = (await current.json()).parents ?? []
+  await driveFetch(`/files/${fileId}`, {
+    addParents: folderId,
+    ...(parents.length ? { removeParents: parents.filter((p) => p !== folderId).join(',') } : {}),
+    fields: 'id',
+  }, { method: 'PATCH', body: newName ? { name: newName } : {} })
 }
 
 /** Extrait l'identifiant d'un lien Google Drive (dossier ou Drive partagé). */

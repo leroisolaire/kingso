@@ -167,6 +167,12 @@ export default function DocumentsPage() {
                   <td className="px-5 py-4">
                     <div className="flex flex-col items-start gap-1">
                       <DocumentStatusBadge status={doc.status} message={doc.statusMessage} />
+                      {doc.reviewState && (
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700" title={doc.reviewNote ?? undefined}>
+                          {doc.reviewState === 'TO_SORT' ? 'À trier' : doc.reviewState === 'CONFIDENTIAL' ? 'À valider (confidentiel ?)' : 'Ignoré'}
+                          {' '}· non utilisé
+                        </span>
+                      )}
                       {doc.status === 'READY' && doc.chunkCount === 0 && (
                         <span className="text-xs text-red-600">Non indexé</span>
                       )}

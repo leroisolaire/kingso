@@ -76,6 +76,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
           LEFT JOIN "Category" c ON c.id = d."categoryId"
           LEFT JOIN "Category" p ON p.id = c."parentId"
           WHERE ch.embedding IS NOT NULL
+            AND d."reviewState" IS NULL -- à trier, confidentiel ou écarté : jamais utilisé par les chats
             AND d.type = ANY(${scope.types}::"DocumentType"[])
             ${categoryFilter}
           ORDER BY ch.embedding <=> ${vec}::vector
