@@ -47,7 +47,7 @@ Familles existantes (dossiers du Drive) :
 ${families}
 
 Réponds avec :
-1. family : la famille de produits du document. Reprends EXACTEMENT le nom d'une famille existante si elle convient. Sinon, propose un nouveau nom court et clair (1 à 3 mots, ex. « Climatisation », « Chauffe-eau thermodynamique »).
+1. family : la famille de produits du document, sous la forme du NOM DU DOSSIER (le nom entre « » en début de ligne ci-dessus, ex. « PAC »), et non le nom de la catégorie. Reprends EXACTEMENT le nom d'un dossier existant si la famille convient. Sinon, propose un nouveau nom court et clair (1 à 3 mots, ex. « Climatisation », « Chauffe-eau thermodynamique »).
 2. brand : la marque du fabricant si le document concerne une marque précise (reprends l'orthographe d'une marque existante si c'est la même), sinon une chaîne vide (document général).
 3. title : un titre clair en français, sur le modèle « Marque Gamme/Modèle - Type de document (précision, année) ». Ajoute « (professionnel) » si le document s'adresse aux installateurs ou techniciens. Pas d'extension de fichier.
 4. confidential : ${params.visibility === 'PUBLIC'

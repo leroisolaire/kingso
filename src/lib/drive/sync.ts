@@ -375,13 +375,24 @@ async function classifyNext(rootId: string, result: QueueResult): Promise<boolea
 
   const visibility = doc.type === 'PUBLIC' ? 'PUBLIC' : 'INTERNAL'
   try {
+    const knownFamilies = await loadFamilies(rootId)
     const c = await classifyDocument({
       fileName: doc.fileName ?? doc.title,
       visibility,
-      families: await loadFamilies(rootId),
+      families: knownFamilies,
       content: doc.content,
     })
     const reviewNote = c.confidential ? c.reasons.join(' ; ') || 'Contenu jugé confidentiel' : null
+
+    // Le modèle peut répondre avec le nom de la catégorie (« Pompe à Chaleur (PAC) ») au lieu du
+    // dossier (« PAC ») : on retombe toujours sur le dossier existant correspondant
+    const matches = knownFamilies.filter((f) => normalize(f.folder) === normalize(c.family) || normalize(f.category) === normalize(c.family))
+    // Plusieurs dossiers pour la même catégorie : on préfère celui qui lui est associé (ex. « PAC »)
+    const family = matches.find((f) => normalize(f.folder) !== normalize(f.category)) ?? matches[0]
+    if (family) {
+      c.family = family.folder
+      c.brand = family.brands.find((b) => normalize(b) === normalize(c.brand)) ?? c.brand
+    }
 
     if (doc.reviewState === 'TO_SORT') {
       // Rangement : <visibilité>/<famille>/<marque>, fichier renommé avec un titre clair
