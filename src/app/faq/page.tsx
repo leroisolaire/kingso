@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import FaqList from '@/components/faq/FaqList'
+import { connection } from 'next/server'
 import { getPublishedFaqs } from '@/lib/db/queries/faq'
 
 export const metadata: Metadata = {
@@ -10,6 +11,8 @@ export const metadata: Metadata = {
 }
 
 export default async function FaqPage() {
+  // Lue à chaque visite et non pendant le build : un souci de base ne doit pas bloquer les déploiements
+  await connection()
   const faqs = await getPublishedFaqs()
 
   return (
