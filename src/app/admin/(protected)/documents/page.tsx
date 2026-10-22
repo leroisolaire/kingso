@@ -29,6 +29,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState<SortKey>('updatedAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [query, setQuery] = useState('')
 
   async function fetchDocuments() {
     const res = await fetch('/api/documents')
@@ -49,12 +50,18 @@ export default function DocumentsPage() {
   }
 
   const sorted = useMemo(() => {
-    return [...documents].sort((a, b) => {
+    // Recherche dans le titre, la catégorie et l'emplacement dans le Drive (ex. « yutaki 2016 »)
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+    const filtered = terms.length === 0 ? documents : documents.filter((d) => {
+      const haystack = `${d.title} ${d.categoryName ?? ''} ${d.drivePath ?? ''}`.toLowerCase()
+      return terms.every((t) => haystack.includes(t))
+    })
+    return [...filtered].sort((a, b) => {
       const aVal = (a[sortKey] ?? '').toString().toLowerCase()
       const bVal = (b[sortKey] ?? '').toString().toLowerCase()
       return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal)
     })
-  }, [documents, sortKey, sortDir])
+  }, [documents, sortKey, sortDir, query])
 
   // Reprend le traitement d'un document interrompu (page fermée) ou en erreur
   const [resuming, setResuming] = useState<string | null>(null)
@@ -106,10 +113,25 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      {!loading && documents.length > 0 && (
+        <div className="mb-4 flex items-center gap-3">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Rechercher par titre, catégorie ou dossier du Drive (ex. « yutaki 2016 »)…"
+            className="w-full max-w-xl rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          />
+          {query && <span className="shrink-0 text-sm text-gray-500">{sorted.length} résultat(s)</span>}
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-gray-500">Chargement...</p>
-      ) : sorted.length === 0 ? (
+      ) : documents.length === 0 ? (
         <p className="text-sm text-gray-500">Aucun document. Cliquez sur « Importer des fichiers » pour commencer.</p>
+      ) : sorted.length === 0 ? (
+        <p className="text-sm text-gray-500">Aucun document ne correspond à « {query} ».</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
           <table className="w-full min-w-[900px] text-sm">
@@ -130,6 +152,11 @@ export default function DocumentsPage() {
                     <Link href={`/admin/documents/${doc.id}`} className="font-medium text-gray-900 hover:text-amber-600">
                       {doc.title}
                     </Link>
+                    {doc.drivePath && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-gray-400" title="Emplacement dans Google Drive">
+                        <span aria-hidden>⇅</span> {doc.drivePath.split('/').join(' › ')}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-4 text-gray-500">
                     {doc.categoryName ?? <span className="text-gray-300">—</span>}

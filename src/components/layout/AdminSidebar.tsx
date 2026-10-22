@@ -10,6 +10,7 @@ const navItems = [
   { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },
+  { href: '/admin/drive', label: 'Google Drive', icon: '⇅' },
   { href: '/admin/sources', label: 'Sources web', icon: '⊕' },
   { href: '/admin/faq', label: 'FAQ', icon: '?' },
   { href: '/admin/history', label: 'Historique', icon: '⊙' },

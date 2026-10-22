@@ -16,6 +16,9 @@ export interface Document {
   status?: DocumentStatus
   statusMessage?: string | null
   chunkCount?: number
+  driveFileId?: string | null
+  /** Emplacement dans le Drive, ex. « Public/PAC/Hitachi/Yutaki 2016 » */
+  drivePath?: string | null
   createdAt: string
   updatedAt: string
 }

@@ -43,38 +43,44 @@ enum AssistantStatus {
 }
 
 model Category {
-  id          String      @id @default(cuid())
-  name        String
-  description String?
-  parentId    String?
-  parent      Category?   @relation("SubCategories", fields: [parentId], references: [id])
-  children    Category[]  @relation("SubCategories")
-  createdAt   DateTime    @default(now())
-  documents   Document[]
-  faqs        Faq[]
-  assistants  Assistant[] @relation("AssistantCategories")
+  id            String                 @id @default(cuid())
+  name          String
+  description   String?
+  parentId      String?
+  parent        Category?              @relation("SubCategories", fields: [parentId], references: [id])
+  children      Category[]             @relation("SubCategories")
+  createdAt     DateTime               @default(now())
+  documents     Document[]
+  faqs          Faq[]
+  assistants    Assistant[]            @relation("AssistantCategories")
+  driveMappings DriveCategoryMapping[]
 }
 
 model Document {
-  id            String                       @id @default(cuid())
-  title         String
-  content       String
-  type          DocumentType                 @default(PUBLIC)
-  categoryId    String?
-  category      Category?                    @relation(fields: [categoryId], references: [id])
-  fileUrl       String? // ancien stockage public (documents créés avant l'import en masse)
-  storagePath   String? // fichier original dans le bucket privé "document-files"
-  fileName      String?
-  mimeType      String?
-  fileSize      Int?
-  contentHash   String? // SHA-256 du fichier : détection des doublons
-  pageCount     Int?
-  status        DocumentStatus               @default(READY)
-  statusMessage String?
-  embedding     Unsupported("vector(1024)")? // obsolète : la recherche se fait sur DocumentChunk
-  chunks        DocumentChunk[]
-  createdAt     DateTime                     @default(now())
-  updatedAt     DateTime                     @updatedAt
+  id                String                       @id @default(cuid())
+  title             String
+  content           String
+  type              DocumentType                 @default(PUBLIC)
+  categoryId        String?
+  category          Category?                    @relation(fields: [categoryId], references: [id])
+  fileUrl           String? // ancien stockage public (documents créés avant l'import en masse)
+  storagePath       String? // fichier original dans le bucket privé "document-files"
+  fileName          String?
+  mimeType          String?
+  fileSize          Int?
+  contentHash       String? // SHA-256 du fichier : détection des doublons
+  pageCount         Int?
+  status            DocumentStatus               @default(READY)
+  statusMessage     String?
+  // Synchronisation Google Drive : le fichier du Drive fait foi pour ce document
+  driveFileId       String?                      @unique
+  driveMd5          String? // empreinte Drive du fichier traité (null = à (re)télécharger)
+  driveModifiedTime DateTime?
+  drivePath         String? // emplacement dans le Drive, ex. « Public/PAC/Hitachi »
+  embedding         Unsupported("vector(1024)")? // obsolète : la recherche se fait sur DocumentChunk
+  chunks            DocumentChunk[]
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
 
   @@index([contentHash])
 }
@@ -119,6 +125,25 @@ model History {
 
   @@index([sessionToken])
   @@index([assistantId, ipHash, createdAt])
+}
+
+// Dossier Google Drive synchronisé avec la base documentaire
+model DriveSource {
+  id             String    @id @default(cuid())
+  name           String
+  folderId       String    @unique // dossier ou Drive partagé racine (contient Public/, Interne/…)
+  lastSyncAt     DateTime?
+  lastSyncReport Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// Correspondance nom de dossier Drive (2e niveau, ex. « PAC ») → catégorie Kingso,
+// utilisée quand aucune catégorie ne porte exactement le nom du dossier
+model DriveCategoryMapping {
+  folderName String   @id // en minuscules
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 }
 
 // Titre résumé d'une conversation (généré par Claude), affiché dans l'historique du back-office

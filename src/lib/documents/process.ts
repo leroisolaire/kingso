@@ -43,6 +43,17 @@ export async function createUploadTarget(fileName: string) {
   return { bucket: DOCUMENT_FILES_BUCKET, path: data.path, token: data.token }
 }
 
+/** Dépose un fichier dans le stockage privé depuis le serveur (ex. fichier téléchargé du Drive). */
+export async function uploadDocumentFile(fileName: string, buffer: Buffer, contentType: string): Promise<string> {
+  const supabase = requireStorage()
+  await ensurePrivateBucket(supabase, DOCUMENT_FILES_BUCKET, MAX_FILE_SIZE)
+  const safeName = fileName.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120)
+  const path = `${new Date().toISOString().slice(0, 7)}/${randomUUID()}-${safeName}`
+  const { error } = await supabase.storage.from(DOCUMENT_FILES_BUCKET).upload(path, buffer, { contentType, upsert: false })
+  if (error) throw new Error(`Stockage : ${error.message}`)
+  return path
+}
+
 export async function getDocumentFileUrl(storagePath: string, expiresIn = 3600): Promise<string | null> {
   const supabase = getAdminStorageClient()
   if (!supabase) return null

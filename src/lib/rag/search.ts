@@ -10,7 +10,7 @@ export interface SearchResult {
   content: string
   source: 'document' | 'webpage'
   url?: string
-  /** Ex. « Pompes à chaleur > Hitachi » — aide Kingso à ne pas mélanger les marques */
+  /** Ex. « PAC > Hitachi > Yutaki 2016 » — aide Kingso à ne pas mélanger marques et générations */
   categoryPath?: string
   /** Ex. « p. 12 » ou « p. 12-13 » */
   pages?: string
@@ -25,6 +25,16 @@ export interface SearchScope {
   categoryIds: string[] | null
   /** Sources web autorisées ; null = toutes ; vide = aucune page web */
   webSourceIds: string[] | null
+}
+
+/**
+ * Provenance donnée à Kingso : le chemin dans le Drive quand il existe (plus précis que la
+ * catégorie, ex. « PAC > Hitachi > Yutaki 2016 > Codes erreur »), sans le dossier de visibilité.
+ */
+function originLabel(drivePath: string | null, categoryPath: string | null): string | undefined {
+  const folders = drivePath?.split('/').filter(Boolean).slice(1) ?? []
+  if (folders.length > 0) return folders.join(' > ')
+  return categoryPath ?? undefined
 }
 
 function pageLabel(start: number | null, end: number | null): string | undefined {
@@ -57,9 +67,9 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
     searchDocs && docLimit > 0
       ? db.$queryRaw<Array<{
           documentId: string; title: string; content: string; fileUrl: string | null
-          pageStart: number | null; pageEnd: number | null; categoryPath: string | null
+          pageStart: number | null; pageEnd: number | null; categoryPath: string | null; drivePath: string | null
         }>>`
-          SELECT d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd",
+          SELECT d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
           JOIN "Document" d ON d.id = ch."documentId"
@@ -91,7 +101,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
       source: 'document' as const,
       // Seuls les anciens documents (bucket public) ont une URL ; les fichiers importés restent privés
       url: d.fileUrl ?? undefined,
-      categoryPath: d.categoryPath ?? undefined,
+      categoryPath: originLabel(d.drivePath, d.categoryPath),
       pages: pageLabel(d.pageStart, d.pageEnd),
     })),
     ...pages.map((p) => ({ id: p.id, title: p.title, content: p.content, source: 'webpage' as const, url: p.url })),

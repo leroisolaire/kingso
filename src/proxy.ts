@@ -9,6 +9,7 @@ const PROTECTED_API_PREFIXES = [
   '/api/history',
   '/api/sources',
   '/api/assistants',
+  '/api/drive',
 ]
 
 export async function proxy(request: NextRequest) {
@@ -45,5 +46,6 @@ export const config = {
     '/api/history/:path*',
     '/api/sources/:path*',
     '/api/assistants/:path*',
+    '/api/drive/:path*',
   ],
 }

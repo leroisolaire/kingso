@@ -65,6 +65,12 @@ export default function DocumentForm({ document, categories, onSubmit, onCancel 
               <ReprocessButton documentId={document.id} status={document.status} />
             </>
           )}
+          {document.drivePath && (
+            <span className="w-full text-xs text-gray-500">
+              ⇅ Synchronisé depuis Google Drive : <span className="font-medium">{document.drivePath.split('/').join(' › ')}</span>
+              {' '}— pour le modifier, le déplacer ou le supprimer, faites-le dans le Drive.
+            </span>
+          )}
           {document.pageCount ? <span>{document.pageCount} pages</span> : null}
           {document.chunkCount ? <span>{document.chunkCount} passages indexés</span> : null}
           {hasFile && (
