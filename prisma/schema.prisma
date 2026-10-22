@@ -121,6 +121,9 @@ model History {
   assistant        Assistant? @relation(fields: [assistantId], references: [id], onDelete: SetNull)
   attachments      String[] // chemins dans le bucket privé chat-attachments
   ipHash           String? // pour la limite de messages par visiteur
+  rating           Int? // avis du client sur la réponse : 1 = 👍, -1 = 👎
+  unanswered       Boolean    @default(false) // Kingso n'a pas trouvé la réponse dans la documentation
+  reviewedAt       DateTime? // traité par l'équipe (page « À améliorer »)
   createdAt        DateTime   @default(now())
 
   @@index([sessionToken])

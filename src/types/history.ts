@@ -7,5 +7,8 @@ export interface HistoryEntry {
   assistantId?: string | null
   attachments?: string[]
   ipHash?: string | null
+  rating?: number | null
+  unanswered?: boolean
+  reviewedAt?: string | null
   createdAt: string
 }

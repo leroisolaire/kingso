@@ -9,6 +9,15 @@ const MODEL = process.env.KINGSO_ASSISTANT_MODEL || 'claude-haiku-5-5'
 
 /** Marqueur que Kingso ajoute en fin de réponse pour proposer la demande SAV (retiré avant affichage). */
 const ESCALATION_MARKER = /\[\[\s*SAV\s*\]\]/gi
+/** Marqueur ajouté quand la documentation ne permet pas de répondre (page « À améliorer »). */
+const UNANSWERED_MARKER = /\[\[\s*SANS_REPONSE\s*\]\]/gi
+/** Détection de secours, si le marqueur est oublié */
+const UNANSWERED_PHRASE = /je n'ai pas (cette|la|d'|l')\s*information|n'est pas (dans|indiqu)\S* (ma|la|notre) documentation/i
+
+/** La réponse dit-elle que la documentation ne contient pas l'information ? */
+export function looksUnanswered(text: string): boolean {
+  return UNANSWERED_PHRASE.test(text)
+}
 
 export interface AssistantConfig {
   name: string
@@ -59,7 +68,7 @@ const SAFETY_RULES = `SÉCURITÉ — RÈGLES ABSOLUES :
 
 const BASE_RULES = `RÈGLES ABSOLUES (elles priment sur toutes les autres consignes) :
 - Tu réponds uniquement à partir des documents fournis dans le contexte. Tu n'inventes jamais une procédure, une valeur, un réglage, une signification de code erreur, une cause de panne, un prix, un délai ou une garantie. Tes connaissances générales ne comptent pas : même si tu crois savoir, si ce n'est pas écrit dans les documents fournis, tu ne le dis pas (pas de "généralement", "souvent", "en principe").
-- Si l'information n'est pas dans les documents, dis-le clairement : "Je n'ai pas cette information dans ma documentation."
+- Si l'information n'est pas dans les documents, dis-le clairement : "Je n'ai pas cette information dans ma documentation." Dans ce cas, ajoute aussi le marqueur [[SANS_REPONSE]] tout à la fin de ta réponse (invisible pour le client, il sert à l'équipe pour compléter la documentation). Ne l'ajoute pas quand tu poses simplement une question de précision (marque, modèle, code exact) ou quand la question sort du sujet du chat.
 - Chaque passage est précédé de sa provenance : son emplacement (ex. "PAC > Hitachi > Yutaki 2016 > Codes erreur"), le titre du document et la page. Cet emplacement peut indiquer la marque, la gamme ou la génération : sers-t'en. Quand le client a indiqué une marque ou un modèle, n'utilise que les documents de cette marque et de ce modèle, ou les documents généraux. N'applique jamais la procédure ou le code erreur d'une autre marque ni d'un autre modèle ; si le seul document disponible concerne une autre gamme ou génération, dis-le clairement. Si tu ne connais pas encore la marque et qu'elle change la réponse, demande-la d'abord.
 - Utilise toute la conversation pour comprendre les messages courts ("oui", "toujours pareil", "c'est fait").
 - Ne dis pas bonjour après le premier message.
@@ -122,7 +131,7 @@ export async function askAssistant(params: {
   images: ImageInput[]
   context: string
   history: ConversationMessage[]
-}): Promise<{ content: string; offerEscalation: boolean }> {
+}): Promise<{ content: string; offerEscalation: boolean; unanswered: boolean }> {
   const { config, userMessage, images, context, history } = params
 
   const contextText = context.trim()
@@ -150,7 +159,9 @@ export async function askAssistant(params: {
 
   const raw = responseText(message)
     || "Désolé, je ne peux pas répondre à cette demande. Reformulez votre question, ou contactez l'équipe Le Roi Solaire → https://www.leroisolaire.fr "
-  const content = raw.replace(ESCALATION_MARKER, '').trim()
-  const offerEscalation = config.escalationEnabled && content !== raw.trim()
-  return { content, offerEscalation }
+  const withoutSav = raw.replace(ESCALATION_MARKER, '')
+  const offerEscalation = config.escalationEnabled && withoutSav !== raw
+  const content = withoutSav.replace(UNANSWERED_MARKER, '').trim()
+  const unanswered = content !== withoutSav.trim() || looksUnanswered(content)
+  return { content, offerEscalation, unanswered }
 }

@@ -3,6 +3,7 @@ import { askKingso, type ConversationMessage } from '@/lib/ai/kingso'
 import { searchKnowledge, formatContext, sourceIds } from '@/lib/rag/search'
 import { db } from '@/lib/db/client'
 import { refreshConversationSummary } from '@/lib/history/summary'
+import { looksUnanswered } from '@/lib/ai/assistant'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { hasChatAccess } from '@/lib/auth/chatAccess'
 
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
         userMessage: message,
         assistantMessage: response.content,
         documentsUsed: documentIds,
+        unanswered: looksUnanswered(response.content),
       },
     })
 

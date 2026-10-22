@@ -126,7 +126,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       : message
     const documentsUsed = sourceIds(results)
 
-    await db.history.create({
+    const entry = await db.history.create({
+      select: { id: true },
       data: {
         sessionToken,
         userMessage: historyUserMessage,
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest, { params }: Params) {
         assistantId: assistant.id,
         attachments,
         ipHash: isPreview ? null : ipHash,
+        unanswered: response.unanswered,
       },
     })
 
@@ -146,6 +148,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       documentsUsed,
       offerEscalation: response.offerEscalation,
       historyUserMessage,
+      historyId: entry.id,
     })
   } catch (error) {
     console.error('[/api/c/:slug/chat]', error instanceof Error ? error.message : error)

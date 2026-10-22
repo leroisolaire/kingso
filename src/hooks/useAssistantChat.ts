@@ -14,6 +14,10 @@ export interface AssistantMessage {
   documentsUsed?: string[]
   offerEscalation?: boolean
   isError?: boolean
+  /** Identifiant de l'échange enregistré (pour noter la réponse) */
+  historyId?: string
+  /** Avis du client : 1 = 👍, -1 = 👎 */
+  rating?: 1 | -1 | null
   createdAt: string
 }
 
@@ -179,6 +183,7 @@ export function useAssistantChat(slug: string) {
           content: data.content,
           documentsUsed: data.documentsUsed ?? [],
           offerEscalation: Boolean(data.offerEscalation),
+          historyId: data.historyId,
           createdAt: new Date().toISOString(),
         },
       ])
@@ -227,6 +232,21 @@ export function useAssistantChat(slug: string) {
     }
   }, [slug])
 
+  /** Note une réponse (un 2e appui sur le même avis le retire). */
+  const rateMessage = useCallback(async (messageId: string, value: 1 | -1) => {
+    const message = messagesRef.current.find((m) => m.id === messageId)
+    if (!message?.historyId) return
+    const next = message.rating === value ? null : value
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, rating: next } : m)))
+    try {
+      await fetch(`/api/c/${encodeURIComponent(slug)}/feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ historyId: message.historyId, sessionToken: sessionToken.current, rating: next ?? 0 }),
+      })
+    } catch { /* un avis perdu n'empêche pas de continuer la conversation */ }
+  }, [slug])
+
   /** Renvoie le dernier message qui n'a pas abouti (sans le dupliquer dans la conversation). */
   const retryFailed = useCallback(() => {
     if (!failed) return
@@ -252,6 +272,6 @@ export function useAssistantChat(slug: string) {
   return {
     messages, isTyping, mascotState, hydrated,
     escalationOffered, escalationSent, limitReached, canRetry: failed !== null,
-    sendMessage, retryFailed, submitEscalation, handleInteraction, resetConversation,
+    sendMessage, retryFailed, rateMessage, submitEscalation, handleInteraction, resetConversation,
   }
 }

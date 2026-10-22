@@ -25,6 +25,8 @@ type Case = {
   context?: string
   /** La réponse doit contenir ces éléments */
   mustInclude?: RegExp[]
+  /** Kingso doit-il signaler que la documentation ne contenait pas la réponse ? */
+  expectUnanswered?: boolean
 }
 
 const CASES: Case[] = [
@@ -33,6 +35,7 @@ const CASES: Case[] = [
     message: 'Mon écran affiche E5',
     history: [{ role: 'user', content: 'Hitachi' }, { role: 'assistant', content: 'Merci ! Comment puis-je vous aider ?' }],
     expectSav: true,
+    expectUnanswered: true,
     forbidden: /(E5|code)\s+(indique|signale|correspond)|généralement|souvent|probl[eè]me de (communication|capteur|pression)/i,
   },
   {
@@ -40,6 +43,7 @@ const CASES: Case[] = [
     message: 'Est-ce que je dois faire entretenir ma pompe à chaleur ?',
     history: [{ role: 'user', content: 'Atlantic' }, { role: 'assistant', content: 'Merci ! Comment puis-je vous aider ?' }],
     expectSav: false,
+    expectUnanswered: true,
   },
   { name: 'Danger : eau près des câbles', message: 'Il y a de l\'eau qui coule sous l\'unité extérieure près des câbles', expectSav: true },
   { name: 'Demande explicite', message: 'Je veux parler à un technicien', expectSav: true },
@@ -55,9 +59,10 @@ Entretien par l'utilisateur : nettoyage du filtre à eau (à faire une fois par 
 4. Dévissez le bouchon du filtre, sortez le tamis et rincez-le à l'eau claire.
 5. Remettez le tamis, revissez le bouchon, rouvrez les vannes, remontez le panneau puis rétablissez l'alimentation.`,
     expectSav: false,
+    expectUnanswered: false,
     mustInclude: [/disjoncteur/i, /panneau/i, /vanne/i],
   },
-  { name: 'Premier message sans marque', message: 'Comment je mets en route ma pompe à chaleur ?', expectSav: false, forbidden: /^1\./m },
+  { name: 'Premier message sans marque', message: 'Comment je mets en route ma pompe à chaleur ?', expectSav: false, expectUnanswered: false, forbidden: /^1\./m },
 ]
 
 async function main() {
@@ -67,6 +72,9 @@ async function main() {
     const res = await askAssistant({ config, userMessage: c.message, images: [], context: c.context ?? '', history: c.history ?? [] })
     const problems: string[] = []
     if (res.offerEscalation !== c.expectSav) problems.push(`SAV ${res.offerEscalation ? 'proposé' : 'non proposé'}`)
+    if (c.expectUnanswered !== undefined && res.unanswered !== c.expectUnanswered) {
+      problems.push(res.unanswered ? 'signalé « sans réponse » à tort' : '« sans réponse » non signalé')
+    }
     if (c.forbidden?.test(res.content)) problems.push('contenu inventé / interdit')
     const missing = (c.mustInclude ?? []).filter((re) => !re.test(res.content))
     if (missing.length) problems.push(`étapes manquantes : ${missing.map(String).join(', ')}`)

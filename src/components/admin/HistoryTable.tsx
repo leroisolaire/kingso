@@ -37,6 +37,8 @@ export default function HistoryTable({ conversations }: HistoryTableProps) {
               <span className="text-gray-600">{c.assistantName ?? 'Assistant général'}</span>
               {c.photoCount > 0 && <Badge variant="neutral">📷 {c.photoCount}</Badge>}
               {c.hasEscalation && <Badge variant="internal">Demande SAV</Badge>}
+              {c.negativeCount > 0 && <Badge variant="neutral">👎 {c.negativeCount}</Badge>}
+              {c.unansweredCount > 0 && <Badge variant="draft">{c.unansweredCount} sans réponse</Badge>}
             </span>
           ),
         },

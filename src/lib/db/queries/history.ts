@@ -48,6 +48,9 @@ export interface ConversationSummary {
   assistantName: string | null
   photoCount: number
   hasEscalation: boolean
+  /** Réponses notées 👎 / restées sans réponse dans cette conversation */
+  negativeCount: number
+  unansweredCount: number
 }
 
 export async function getConversations(assistantId?: string): Promise<ConversationSummary[]> {
@@ -81,6 +84,8 @@ export async function getConversations(assistantId?: string): Promise<Conversati
       assistantName: list[0].assistant?.name ?? null,
       photoCount: list.reduce((n, e) => n + e.attachments.length, 0),
       hasEscalation: escalated.has(sessionToken),
+      negativeCount: list.filter((e) => e.rating === -1).length,
+      unansweredCount: list.filter((e) => e.unanswered).length,
     }))
     .sort((a, b) => b.lastCreatedAt.localeCompare(a.lastCreatedAt))
 }
@@ -104,4 +109,18 @@ export async function saveMessage(
 ): Promise<HistoryEntry> {
   const entry = await db.history.create({ data })
   return serialize(entry)
+}
+
+/** Avis 👍 / 👎 reçus sur les N derniers jours. */
+export async function getRatingStats(days = 30): Promise<{ up: number; down: number }> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000)
+  const ratings = await db.history.groupBy({
+    by: ['rating'],
+    where: { rating: { not: null }, createdAt: { gte: since } },
+    _count: true,
+  })
+  return {
+    up: ratings.find((r) => r.rating === 1)?._count ?? 0,
+    down: ratings.find((r) => r.rating === -1)?._count ?? 0,
+  }
 }

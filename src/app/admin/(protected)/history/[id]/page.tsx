@@ -70,7 +70,12 @@ function MessageExchange({ entry, sources, photoUrls }: { entry: HistoryEntry; s
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600">Kingso</p>
+        <p className="mb-2 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
+          Kingso
+          {entry.rating === 1 && <span className="normal-case tracking-normal">👍</span>}
+          {entry.rating === -1 && <span className="rounded-full bg-red-100 px-2 py-0.5 normal-case tracking-normal text-red-700">👎 pas utile</span>}
+          {entry.unanswered && <span className="rounded-full bg-amber-100 px-2 py-0.5 normal-case tracking-normal text-amber-800">sans réponse</span>}
+        </p>
         <p className="whitespace-pre-wrap text-gray-900">{entry.assistantMessage}</p>
       </div>
 

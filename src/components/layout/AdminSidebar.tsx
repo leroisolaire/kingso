@@ -14,6 +14,7 @@ const navItems = [
   { href: '/admin/sources', label: 'Sources web', icon: '⊕' },
   { href: '/admin/faq', label: 'FAQ', icon: '?' },
   { href: '/admin/history', label: 'Historique', icon: '⊙' },
+  { href: '/admin/quality', label: 'À améliorer', icon: '✎' },
   { href: '/admin/escalations', label: 'Demandes SAV', icon: '✉' },
 ]
 
