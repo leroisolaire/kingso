@@ -331,17 +331,26 @@ async function loadFamilies(rootId: string): Promise<FamilyOption[]> {
 
   for (const vis of (await listChildren(rootId)).filter((f) => f.mimeType === FOLDER_MIME)) {
     for (const family of (await listChildren(vis.id)).filter((f) => f.mimeType === FOLDER_MIME && normalize(f.name) !== SORT_FOLDER)) {
-      const brands = (await listChildren(family.id)).filter((f) => f.mimeType === FOLDER_MIME).map((f) => f.name)
+      const brandFolders = (await listChildren(family.id)).filter((f) => f.mimeType === FOLDER_MIME)
+      const subfolders: Record<string, string[]> = {}
+      for (const b of brandFolders) {
+        subfolders[b.name] = (await listChildren(b.id)).filter((f) => f.mimeType === FOLDER_MIME).map((f) => f.name)
+      }
+      const brands = brandFolders.map((f) => f.name)
       const known = byFolder.get(normalize(family.name))
-      if (known) known.brands = [...new Set([...known.brands, ...brands])]
-      else byFolder.set(normalize(family.name), { folder: family.name, category: categoryNameOf(family.name), brands })
+      if (known) {
+        known.brands = [...new Set([...known.brands, ...brands])]
+        for (const [b, subs] of Object.entries(subfolders)) known.subfolders[b] = [...new Set([...(known.subfolders[b] ?? []), ...subs])]
+      } else {
+        byFolder.set(normalize(family.name), { folder: family.name, category: categoryNameOf(family.name), brands, subfolders })
+      }
     }
   }
   // Catégories principales sans dossier dans le Drive (ex. « Photovoltaïque (PV) »)
   for (const c of categories.filter((c) => !c.parentId)) {
     const hasFolder = [...byFolder.values()].some((f) => f.category === c.name)
     if (!hasFolder) {
-      byFolder.set(normalize(c.name), { folder: c.name, category: c.name, brands: categories.filter((s) => s.parentId === c.id).map((s) => s.name) })
+      byFolder.set(normalize(c.name), { folder: c.name, category: c.name, brands: categories.filter((s) => s.parentId === c.id).map((s) => s.name), subfolders: {} })
     }
   }
   return [...byFolder.values()]
@@ -392,6 +401,9 @@ async function classifyNext(rootId: string, result: QueueResult): Promise<boolea
     if (family) {
       c.family = family.folder
       c.brand = family.brands.find((b) => normalize(b) === normalize(c.brand)) ?? c.brand
+      // Orthographe existante du sous-dossier (ex. « telecommandes » → « Télécommandes et thermostats »)
+      const existingSubs = Object.entries(family.subfolders).find(([b]) => normalize(b) === normalize(c.brand))?.[1] ?? []
+      c.subfolder = existingSubs.find((sf) => normalize(sf) === normalize(c.subfolder)) ?? c.subfolder
     }
 
     if (doc.reviewState === 'TO_SORT') {
@@ -399,7 +411,9 @@ async function classifyNext(rootId: string, result: QueueResult): Promise<boolea
       const visName = doc.drivePath?.split('/')[0] || (visibility === 'PUBLIC' ? 'Public' : 'Interne')
       const visId = await findOrCreateFolder(rootId, visName)
       const familyId = await findOrCreateFolder(visId, c.family)
-      const targetId = c.brand ? await findOrCreateFolder(familyId, c.brand) : familyId
+      const brandId = c.brand ? await findOrCreateFolder(familyId, c.brand) : familyId
+      // Sous-dossier (gamme, modèle, accessoires…) sous la marque, créé s'il n'existe pas encore
+      const targetId = c.brand && c.subfolder ? await findOrCreateFolder(brandId, c.subfolder) : brandId
       const driveFile = await getFile(doc.driveFileId!)
       const ext = isGoogleNative(driveFile.mimeType) ? '' : fileExtension(driveFile.name)
       const newName = ext ? `${c.title}.${ext}` : c.title
@@ -408,7 +422,7 @@ async function classifyNext(rootId: string, result: QueueResult): Promise<boolea
       const { categoryId, createdFamily } = await ensureCategory(c.family, c.brand)
       if (createdFamily) await logDriveEvent('FAMILY_CREATED', c.family, `Nouvelle famille créée pour « ${c.title} »`)
 
-      const newPath = [visName, c.family, c.brand].filter(Boolean).join('/')
+      const newPath = [visName, c.family, c.brand, c.brand ? c.subfolder : ''].filter(Boolean).join('/')
       await db.document.update({
         where: { id: doc.id },
         data: {
