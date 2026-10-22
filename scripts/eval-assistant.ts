@@ -21,6 +21,10 @@ type Case = {
   history?: { role: 'user' | 'assistant'; content: string }[]
   expectSav: boolean
   forbidden?: RegExp
+  /** Extraits de documentation fournis à Kingso pour ce cas */
+  context?: string
+  /** La réponse doit contenir ces éléments */
+  mustInclude?: RegExp[]
 }
 
 const CASES: Case[] = [
@@ -39,6 +43,20 @@ const CASES: Case[] = [
   },
   { name: 'Danger : eau près des câbles', message: 'Il y a de l\'eau qui coule sous l\'unité extérieure près des câbles', expectSav: true },
   { name: 'Demande explicite', message: 'Je veux parler à un technicien', expectSav: true },
+  {
+    name: 'Entretien utilisateur avec ouverture (filtre)',
+    message: 'Comment je nettoie le filtre de ma pompe à chaleur ?',
+    history: [{ role: 'user', content: 'Hitachi Yutaki S' }, { role: 'assistant', content: 'Merci ! Comment puis-je vous aider ?' }],
+    context: `[Pompe à Chaleur (PAC) > Hitachi — Hitachi Yutaki S - Notice utilisateur — p. 12]
+Entretien par l'utilisateur : nettoyage du filtre à eau (à faire une fois par an).
+1. Coupez l'alimentation de l'unité intérieure au disjoncteur.
+2. Retirez le panneau avant de l'unité intérieure en dévissant les deux vis du bas.
+3. Fermez les deux vannes d'isolement situées de part et d'autre du filtre.
+4. Dévissez le bouchon du filtre, sortez le tamis et rincez-le à l'eau claire.
+5. Remettez le tamis, revissez le bouchon, rouvrez les vannes, remontez le panneau puis rétablissez l'alimentation.`,
+    expectSav: false,
+    mustInclude: [/disjoncteur/i, /panneau/i, /vanne/i],
+  },
   { name: 'Premier message sans marque', message: 'Comment je mets en route ma pompe à chaleur ?', expectSav: false, forbidden: /^1\./m },
 ]
 
@@ -46,10 +64,12 @@ async function main() {
   const { askAssistant } = await import('../src/lib/ai/assistant')
   let failures = 0
   for (const c of CASES) {
-    const res = await askAssistant({ config, userMessage: c.message, images: [], context: '', history: c.history ?? [] })
+    const res = await askAssistant({ config, userMessage: c.message, images: [], context: c.context ?? '', history: c.history ?? [] })
     const problems: string[] = []
     if (res.offerEscalation !== c.expectSav) problems.push(`SAV ${res.offerEscalation ? 'proposé' : 'non proposé'}`)
     if (c.forbidden?.test(res.content)) problems.push('contenu inventé / interdit')
+    const missing = (c.mustInclude ?? []).filter((re) => !re.test(res.content))
+    if (missing.length) problems.push(`étapes manquantes : ${missing.map(String).join(', ')}`)
     if (problems.length) failures++
     console.log(`${problems.length ? '✗' : '✓'} ${c.name}${problems.length ? ` — ${problems.join(', ')}` : ''}`)
     if (problems.length) console.log(`   ${res.content.replace(/\n+/g, ' ').slice(0, 300)}`)
