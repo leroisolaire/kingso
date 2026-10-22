@@ -7,7 +7,13 @@ function createClient() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is not set. Vérifiez .env.local ou les secrets GitHub.')
   }
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+  // Sur Vercel, plusieurs instances tournent en parallèle et le pooler Supabase limite le nombre
+  // de clients : chaque instance garde peu de connexions et rend vite celles qui sont inutilisées.
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.DATABASE_POOL_MAX ?? 3),
+    idleTimeoutMillis: 10_000,
+  })
   return new PrismaClient({ adapter })
 }
 
