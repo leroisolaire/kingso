@@ -83,6 +83,12 @@ export default function AssistantForm({ assistant, categories, webSources, onSub
   const [escalationEmails, setEscalationEmails] = useState((assistant?.escalationEmails ?? []).join(', '))
   const [attachmentsEnabled, setAttachmentsEnabled] = useState(assistant?.attachmentsEnabled ?? true)
   const [dailyMessageLimit, setDailyMessageLimit] = useState(String(assistant?.dailyMessageLimit ?? 30))
+  const [isHome, setIsHome] = useState(assistant?.isHome ?? false)
+  const [showOnHome, setShowOnHome] = useState(assistant?.showOnHome ?? false)
+  const [homeTitle, setHomeTitle] = useState(assistant?.homeTitle ?? '')
+  const [homeDescription, setHomeDescription] = useState(assistant?.homeDescription ?? '')
+  const [homeIcon, setHomeIcon] = useState(assistant?.homeIcon ?? '')
+  const [homeOrder, setHomeOrder] = useState(String(assistant?.homeOrder ?? 0))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fields, setFields] = useState<Record<string, string>>({})
@@ -118,6 +124,12 @@ export default function AssistantForm({ assistant, categories, webSources, onSub
       escalationEmails: escalationEmails.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean),
       attachmentsEnabled,
       dailyMessageLimit: Number(dailyMessageLimit) || 0,
+      isHome,
+      showOnHome: showOnHome && !isHome,
+      homeTitle: homeTitle.trim() || null,
+      homeDescription: homeDescription.trim() || null,
+      homeIcon: homeIcon.trim() || null,
+      homeOrder: Number(homeOrder) || 0,
     })
     setLoading(false)
     if (!result.ok) {
@@ -300,6 +312,43 @@ export default function AssistantForm({ assistant, categories, webSources, onSub
             />
             <p className="-mt-2 text-xs text-gray-500">Séparez plusieurs adresses par des virgules.</p>
           </>
+        )}
+      </Section>
+
+      <Section
+        title="Page d'accueil (kingso.fr)"
+        description="Le chat d'accueil reçoit les visiteurs de kingso.fr et les oriente vers les chats proposés."
+      >
+        <Toggle
+          checked={isHome}
+          onChange={setIsHome}
+          label="C'est le chat d'accueil de kingso.fr"
+          hint="Il répond aux questions générales et oriente vers les chats spécialisés. Un seul chat d'accueil à la fois : cocher ici retire ce rôle à l'actuel."
+        />
+        {!isHome && (
+          <Toggle
+            checked={showOnHome}
+            onChange={setShowOnHome}
+            label="Proposer ce chat sur la page d'accueil"
+            hint="Une tuile apparaît sur kingso.fr, et les questions qui correspondent y sont orientées (chat actif uniquement)."
+          />
+        )}
+        {!isHome && showOnHome && (
+          <div className="grid gap-4 sm:grid-cols-[90px_1fr_110px]">
+            <Input label="Icône" value={homeIcon} onChange={(e) => setHomeIcon(e.target.value)} placeholder="🔥" maxLength={8} />
+            <Input label="Titre de la tuile" value={homeTitle} onChange={(e) => setHomeTitle(e.target.value)} placeholder={name || 'Ma pompe à chaleur'} />
+            <Input label="Ordre" type="number" min={0} max={99} value={homeOrder} onChange={(e) => setHomeOrder(e.target.value)} />
+            <div className="sm:col-span-3">
+              <Input
+                label="Description courte"
+                value={homeDescription}
+                onChange={(e) => setHomeDescription(e.target.value)}
+                placeholder="Mise en route, code erreur, panne de votre pompe à chaleur"
+                error={fields.homeDescription}
+              />
+              <p className="mt-1 text-xs text-gray-500">Affichée sur la tuile, elle sert aussi à Kingso pour orienter les questions vers ce chat.</p>
+            </div>
+          </div>
         )}
       </Section>
 

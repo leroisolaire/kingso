@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { db } from '../client'
 import type { Prisma } from '@prisma/client'
-import type { Assistant, AssistantInput, AssistantSummary } from '@/types/assistant'
+import type { Assistant, AssistantInput, AssistantSummary, HomeTile } from '@/types/assistant'
 
 const include = {
   categories: { select: { id: true } },
@@ -92,10 +92,22 @@ function scalarData(input: AssistantInput) {
     escalationEmails: input.escalationEmails,
     attachmentsEnabled: input.attachmentsEnabled,
     dailyMessageLimit: input.dailyMessageLimit,
+    isHome: input.isHome,
+    showOnHome: input.showOnHome,
+    homeTitle: input.homeTitle,
+    homeDescription: input.homeDescription,
+    homeIcon: input.homeIcon,
+    homeOrder: input.homeOrder,
   }
 }
 
+/** Un seul chat d'accueil : en désigner un retire ce rôle aux autres. */
+async function releaseHome(exceptId?: string) {
+  await db.assistant.updateMany({ where: { isHome: true, ...(exceptId ? { id: { not: exceptId } } : {}) }, data: { isHome: false } })
+}
+
 export async function createAssistant(input: AssistantInput): Promise<Assistant> {
+  if (input.isHome) await releaseHome()
   const row = await db.assistant.create({
     data: {
       ...scalarData(input),
@@ -117,6 +129,7 @@ export async function updateAssistant(id: string, input: AssistantInput): Promis
     previousSlugs = [...previousSlugs, current.slug]
   }
 
+  if (input.isHome) await releaseHome(id)
   const row = await db.assistant.update({
     where: { id },
     data: {
@@ -152,6 +165,13 @@ export async function duplicateAssistant(id: string): Promise<Assistant> {
       escalationEmails: source.escalationEmails,
       attachmentsEnabled: source.attachmentsEnabled,
       dailyMessageLimit: source.dailyMessageLimit,
+      // La copie n'est jamais le chat d'accueil ni proposée sur l'accueil tant qu'on ne l'a pas décidé
+      isHome: false,
+      showOnHome: false,
+      homeTitle: source.homeTitle,
+      homeDescription: source.homeDescription,
+      homeIcon: source.homeIcon,
+      homeOrder: source.homeOrder,
       categories: { connect: source.categories },
       webSources: { connect: source.webSources },
     },
@@ -202,4 +222,28 @@ export async function getAssistantsUsingCategory(
     if (allowed.includes(categoryId)) result.push({ id: a.id, name: a.name })
   }
   return result
+}
+
+/** Chat d'accueil de kingso.fr (actif uniquement, sauf aperçu admin). */
+export async function getHomeAssistantSlug(includeDrafts = false): Promise<string | null> {
+  const home = await db.assistant.findFirst({
+    where: { isHome: true, ...(includeDrafts ? {} : { status: 'ACTIVE' }) },
+    select: { slug: true },
+  })
+  return home?.slug ?? null
+}
+
+/** Chats actifs proposés sur la page d'accueil (tuiles + orientation des questions). */
+export async function getHomeTiles(): Promise<HomeTile[]> {
+  const rows = await db.assistant.findMany({
+    where: { showOnHome: true, status: 'ACTIVE', isHome: false },
+    orderBy: [{ homeOrder: 'asc' }, { name: 'asc' }],
+    select: { slug: true, name: true, homeTitle: true, homeDescription: true, homeIcon: true },
+  })
+  return rows.map((r) => ({
+    slug: r.slug,
+    title: r.homeTitle || r.name,
+    description: r.homeDescription ?? '',
+    icon: r.homeIcon || '💬',
+  }))
 }

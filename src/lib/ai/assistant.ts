@@ -24,6 +24,8 @@ export interface AssistantConfig {
   audience: 'CUSTOMER' | 'STAFF'
   instructions: string
   escalationEnabled: boolean
+  /** Autres chats de Kingso, pour orienter une question hors sujet */
+  otherChats?: { title: string; description: string; url: string }[]
 }
 
 export interface ImageInput {
@@ -82,6 +84,11 @@ export function buildAssistantSystemPrompt(config: AssistantConfig): string {
   ]
   if (config.instructions.trim()) {
     parts.push(`CONSIGNES SPÉCIFIQUES À CE CHAT :\n${config.instructions.trim()}`)
+  }
+  if (config.otherChats?.length) {
+    parts.push(`AUTRES CHATS DE KINGSO :
+Si la question du client relève clairement d'un autre sujet que le tien, dis-le simplement et donne le lien du chat adapté (suivi d'un espace), sans répondre sur le fond :
+${config.otherChats.map((c) => `- ${c.title}${c.description ? ` (${c.description})` : ''} → ${c.url}`).join('\n')}`)
   }
   parts.push(escalationRules(config))
   parts.push(`PHOTOS : le client peut envoyer des photos (afficheur, code erreur, étiquette signalétique, installation). Décris brièvement ce que tu y lis d'utile (marque, modèle, code, voyant) puis réponds avec la documentation. Si la photo est illisible, demande-en une autre plus nette.`)

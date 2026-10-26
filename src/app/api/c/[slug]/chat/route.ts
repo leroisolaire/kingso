@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { askAssistant, describeImages, type ImageInput } from '@/lib/ai/assistant'
 import type { ConversationMessage } from '@/lib/ai/kingso'
 import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
-import { expandCategoryIds } from '@/lib/db/queries/assistants'
+import { expandCategoryIds, getHomeTiles } from '@/lib/db/queries/assistants'
 import { resolveAssistant } from '@/lib/assistants/resolve'
 import { saveAttachments } from '@/lib/storage/attachments'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -112,6 +112,9 @@ export async function POST(request: NextRequest, { params }: Params) {
         audience: assistant.audience,
         instructions: assistant.instructions,
         escalationEnabled: assistant.escalationEnabled,
+        otherChats: (await getHomeTiles())
+          .filter((t) => t.slug !== assistant.slug)
+          .map((t) => ({ title: t.title, description: t.description, url: `${request.nextUrl.origin}/${t.slug}` })),
       },
       userMessage: message,
       images,

@@ -200,6 +200,13 @@ model Assistant {
   escalationEmails   String[]
   attachmentsEnabled Boolean           @default(true)
   dailyMessageLimit  Int               @default(30)
+  // Page d'accueil kingso.fr : le chat d'accueil (un seul) oriente vers les chats proposés
+  isHome             Boolean           @default(false)
+  showOnHome         Boolean           @default(false)
+  homeTitle          String? // titre de la tuile, ex. « Ma pompe à chaleur »
+  homeDescription    String? // ex. « Mise en route, code erreur, panne » — sert aussi à orienter les questions
+  homeIcon           String? // emoji
+  homeOrder          Int               @default(0)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   histories          History[]

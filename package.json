@@ -12,7 +12,8 @@
     "crawl": "tsx scripts/crawl-website.ts",
     "create-admin": "tsx scripts/create-admin-user.ts",
     "seed-pac": "tsx scripts/seed-pac-assistant.ts",
-    "reindex-documents": "tsx --conditions=react-server scripts/reindex-documents.ts"
+    "reindex-documents": "tsx --conditions=react-server scripts/reindex-documents.ts",
+    "seed-home-pv": "tsx scripts/seed-home-pv.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

@@ -55,6 +55,8 @@ export default function AssistantList({ assistants }: { assistants: AssistantSum
                 {a.audience === 'CUSTOMER' ? 'Clients' : 'Collaborateurs'}
               </Badge>
               {a.access === 'PASSWORD' && <Badge variant="neutral">🔒 Mot de passe</Badge>}
+              {a.isHome && <Badge variant="internal">🏠 Chat d&apos;accueil (kingso.fr)</Badge>}
+              {a.showOnHome && <Badge variant="neutral">{a.homeIcon ?? '💬'} Proposé sur l&apos;accueil</Badge>}
             </div>
             <p className="mt-1 truncate font-mono text-xs text-gray-500">/{a.slug}</p>
             <p className="mt-1 text-xs text-gray-400">

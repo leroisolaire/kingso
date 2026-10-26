@@ -2,6 +2,9 @@ import AdminSidebar from '@/components/layout/AdminSidebar'
 import { getCurrentUser } from '@/lib/auth/dal'
 import { db } from '@/lib/db/client'
 
+// Pages du back-office toujours rendues à la demande : jamais d'accès à la base pendant le build
+export const dynamic = 'force-dynamic'
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const [user, driveAlerts] = await Promise.all([
     getCurrentUser(),

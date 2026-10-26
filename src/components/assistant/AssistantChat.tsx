@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import MascotDisplay from '@/components/mascot/MascotDisplay'
 import VideoPreloader from '@/components/mascot/VideoPreloader'
 import Composer from './Composer'
 import EscalationCard from './EscalationCard'
 import { useAssistantChat, type AssistantMessage } from '@/hooks/useAssistantChat'
 import type { MascotState } from '@/types/chat'
-import type { PublicAssistant } from '@/types/assistant'
+import type { HomeTile, PublicAssistant } from '@/types/assistant'
 
 const STATE_LABEL: Record<MascotState, string> = {
   idle: 'En ligne',
@@ -142,7 +144,16 @@ function useVisualViewportHeight() {
   return height
 }
 
-export default function AssistantChat({ assistant }: { assistant: PublicAssistant }) {
+interface AssistantChatProps {
+  assistant: PublicAssistant
+  /** Chat d'accueil : chats proposés (tuiles), vers lesquels la 1re question peut être orientée */
+  tiles?: HomeTile[]
+  /** Question transmise par la page d'accueil (?q=) : envoyée automatiquement à l'ouverture */
+  initialQuestion?: string
+}
+
+export default function AssistantChat({ assistant, tiles = [], initialQuestion }: AssistantChatProps) {
+  const router = useRouter()
   const {
     messages, isTyping, mascotState, hydrated,
     escalationOffered, escalationSent, limitReached, canRetry,
@@ -153,6 +164,17 @@ export default function AssistantChat({ assistant }: { assistant: PublicAssistan
   const [cardOpenedManually, setCardOpenedManually] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const viewportHeight = useVisualViewportHeight()
+  const [routing, setRouting] = useState(false)
+  const [routeChoices, setRouteChoices] = useState<{ question: string; slugs: string[] } | null>(null)
+  const initialSent = useRef(false)
+
+  // Question venue de l'accueil : posée une seule fois, puis retirée de l'adresse (pas de renvoi au rechargement)
+  useEffect(() => {
+    if (!hydrated || !initialQuestion || initialSent.current) return
+    initialSent.current = true
+    window.history.replaceState(null, '', window.location.pathname)
+    sendMessage(initialQuestion)
+  }, [hydrated, initialQuestion, sendMessage])
 
   const latestOfferId = [...messages].reverse().find((m) => m.offerEscalation)?.id ?? null
   const cardVisible = cardOpenedManually || (latestOfferId !== null && latestOfferId !== dismissedOfferId)
@@ -171,10 +193,30 @@ export default function AssistantChat({ assistant }: { assistant: PublicAssistan
     && (assistant.startButtons.length === 0 || userMessageCount >= 1) && userMessageCount < 4
   const showEscalationLink = assistant.escalationEnabled && escalationOffered && !cardVisible && !escalationSent
 
-  const send = (text: string, images: Parameters<typeof sendMessage>[1] = []) => {
+  const goTo = (slug: string, question: string) => {
+    setRouteChoices(null)
+    router.push(`/${slug}?q=${encodeURIComponent(question)}`)
+  }
+
+  const send = async (text: string, images: Parameters<typeof sendMessage>[1] = []) => {
     handleInteraction()
+    // Accueil : la 1re question est orientée vers le chat spécialisé le plus adapté
+    if (tiles.length > 0 && messages.length === 0 && images.length === 0 && text) {
+      setRouting(true)
+      const decision = await fetch('/api/route-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      }).then((r) => r.json()).catch(() => ({ target: null, alternatives: [] }))
+      if (decision.target) return goTo(decision.target, text)
+      setRouting(false)
+      if (decision.alternatives?.length > 1) return setRouteChoices({ question: text, slugs: decision.alternatives })
+    }
+    setRouteChoices(null)
     sendMessage(text, images)
   }
+
+  const showTiles = hydrated && tiles.length > 0 && messages.length === 0 && !routeChoices && !routing
 
   return (
     <div
@@ -285,7 +327,56 @@ export default function AssistantChat({ assistant }: { assistant: PublicAssistan
               ),
             )}
 
-            {isTyping && <TypingBubble />}
+            {showTiles && (
+              <div className="message-in grid gap-2.5 sm:grid-cols-2" style={{ opacity: 0 }}>
+                {tiles.map((t) => (
+                  <Link
+                    key={t.slug}
+                    href={`/${t.slug}`}
+                    className="flex items-start gap-3 rounded-2xl border-2 border-[#e73e11]/15 bg-white p-4 shadow-sm transition-colors hover:border-[#e73e11] active:bg-[#e73e11]/5"
+                  >
+                    <span className="text-3xl leading-none" aria-hidden>{t.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-base font-semibold text-gray-900">{t.title}</span>
+                      {t.description && <span className="mt-0.5 block text-sm leading-snug text-gray-500">{t.description}</span>}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {routeChoices && (
+              <>
+                <UserBubble message={{ id: 'route-question', role: 'USER', content: routeChoices.question, createdAt: '' }} />
+                <KingsoBubble>
+                  Votre question peut concerner plusieurs sujets. Lequel correspond le mieux ?
+                </KingsoBubble>
+                <div className="flex flex-col gap-2.5 pl-9 sm:flex-row sm:flex-wrap">
+                  {routeChoices.slugs.map((slug) => {
+                    const tile = tiles.find((t) => t.slug === slug)
+                    return tile ? (
+                      <button
+                        key={slug}
+                        type="button"
+                        onClick={() => goTo(slug, routeChoices.question)}
+                        className="min-h-12 rounded-2xl border-2 border-[#e73e11]/20 bg-white px-5 py-3 text-left text-base font-semibold text-gray-900 shadow-sm hover:border-[#e73e11]"
+                      >
+                        {tile.icon} {tile.title}
+                      </button>
+                    ) : null
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => { const q = routeChoices.question; setRouteChoices(null); sendMessage(q) }}
+                    className="min-h-12 rounded-2xl px-5 py-3 text-left text-base text-gray-600 hover:bg-gray-100"
+                  >
+                    Autre chose
+                  </button>
+                </div>
+              </>
+            )}
+
+            {(isTyping || routing) && <TypingBubble />}
 
             {assistant.escalationEnabled && (cardVisible || escalationSent) && (
               <div className="sm:pl-9">

@@ -21,6 +21,12 @@ export interface Assistant {
   escalationEmails: string[]
   attachmentsEnabled: boolean
   dailyMessageLimit: number
+  isHome: boolean
+  showOnHome: boolean
+  homeTitle: string | null
+  homeDescription: string | null
+  homeIcon: string | null
+  homeOrder: number
   createdAt: string
   updatedAt: string
 }
@@ -48,6 +54,12 @@ export interface AssistantInput {
   escalationEmails: string[]
   attachmentsEnabled: boolean
   dailyMessageLimit: number
+  isHome: boolean
+  showOnHome: boolean
+  homeTitle: string | null
+  homeDescription: string | null
+  homeIcon: string | null
+  homeOrder: number
 }
 
 /** Ce que la page publique /{slug} reçoit — aucune donnée sensible. */
@@ -61,4 +73,12 @@ export interface PublicAssistant {
   escalationEnabled: boolean
   attachmentsEnabled: boolean
   isPreview: boolean
+}
+
+/** Tuile de la page d'accueil, vers un chat spécialisé */
+export interface HomeTile {
+  slug: string
+  title: string
+  description: string
+  icon: string
 }

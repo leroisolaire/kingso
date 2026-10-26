@@ -42,6 +42,12 @@ export function parseAssistantInput(body: Record<string, unknown>, isNew: boolea
     escalationEmails: stringList(body.escalationEmails, 10, 150).map((e) => e.toLowerCase()),
     attachmentsEnabled: body.attachmentsEnabled !== false,
     dailyMessageLimit: Math.max(0, Math.min(500, Math.round(Number(body.dailyMessageLimit) || 0))),
+    isHome: body.isHome === true,
+    showOnHome: body.showOnHome === true && body.isHome !== true,
+    homeTitle: str(body.homeTitle).slice(0, 60) || null,
+    homeDescription: str(body.homeDescription).slice(0, 200) || null,
+    homeIcon: str(body.homeIcon).slice(0, 8) || null,
+    homeOrder: Math.max(0, Math.min(99, Math.round(Number(body.homeOrder) || 0))),
   }
 
   if (!input.name) errors.name = 'Le nom est obligatoire.'
@@ -50,6 +56,10 @@ export function parseAssistantInput(body: Record<string, unknown>, isNew: boolea
   } else if (RESERVED_SLUGS.includes(input.slug)) {
     errors.slug = 'Cette adresse est réservée.'
   }
+  if (input.showOnHome && !input.homeDescription) {
+    errors.homeDescription = 'Une courte description est nécessaire pour la tuile et pour orienter les questions.'
+  }
+  if (input.isHome && input.access === 'PASSWORD') errors.access = "Le chat d'accueil doit être public."
   if (!input.welcomeMessage) errors.welcomeMessage = 'Le message d\'accueil est obligatoire.'
   if (input.access === 'PASSWORD' && isNew && !input.accessPassword) {
     errors.accessPassword = 'Un mot de passe est requis pour un chat protégé.'
