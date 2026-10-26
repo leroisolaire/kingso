@@ -119,13 +119,15 @@ export default function VideosClient({ apiKeyConfigured, geminiConfigured, drive
   })
 
   /** Fiches rédigées par Gemini puis synchronisation du Drive (rangement, contrôle, indexation). */
-  const processAll = async (total: number) => {
+  const processAll = async (expected: number) => {
     let count = 0
+    let total = expected
     const errors: string[] = []
     for (;;) {
       setStatus(`Rédaction des fiches : ${count} / ${total}… (environ une minute par vidéo)`)
       const r = await post('/api/videos/process')
       count += r.done.length + r.errors.length
+      total = count + r.remaining
       errors.push(...r.errors.map((e: { title: string; message: string }) => `${e.title} : ${e.message}`))
       if (errors.length) setError(errors.join(' / '))
       if (r.remaining === 0 || r.done.length + r.errors.length === 0) break
