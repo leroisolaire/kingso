@@ -78,11 +78,14 @@ async function makeResolver() {
     if (normalize(path[1]) === SORT_FOLDER) return { type, categoryId: null, toSort: true }
 
     const folder = path[1]
-    const parent = mappingByName.get(normalize(folder))
+    let parent = mappingByName.get(normalize(folder))
       ?? categories.find((c) => !c.parentId && normalize(c.name) === normalize(folder))?.id
     if (!parent) {
-      unmapped.add(folder)
-      return { skip: `dossier « ${folder} » sans catégorie correspondante` }
+      // Nouvelle famille créée à la main dans le Drive : catégorie du même nom (reliée à aucun chat)
+      const created = await db.category.create({ data: { name: folder.trim() }, select: { id: true, name: true, parentId: true } })
+      categories.push(created)
+      parent = created.id
+      await logDriveEvent('FAMILY_CREATED', folder.trim(), 'Nouvelle famille créée depuis le Drive (reliée à aucun chat)')
     }
     if (path.length < 3) return { type, categoryId: parent, toSort: false }
 
