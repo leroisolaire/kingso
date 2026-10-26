@@ -19,7 +19,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <AdminSidebar user={user} badges={{ '/admin/drive': driveAlerts, '/admin/videos': videosToReview }} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Texte sombre par défaut : le body est en blanc pour le front public (fond sombre) */}
+      <div className="flex flex-1 flex-col overflow-hidden text-gray-900">
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
       </div>
     </div>
