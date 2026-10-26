@@ -11,6 +11,7 @@ const navItems = [
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },
   { href: '/admin/drive', label: 'Google Drive', icon: '⇅' },
+  { href: '/admin/videos', label: 'Vidéos', icon: '▶' },
   { href: '/admin/sources', label: 'Sources web', icon: '⊕' },
   { href: '/admin/faq', label: 'FAQ', icon: '?' },
   { href: '/admin/history', label: 'Historique', icon: '⊙' },

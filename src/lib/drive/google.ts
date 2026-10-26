@@ -206,3 +206,27 @@ export function parseDriveLink(input: string): string | null {
   if (match) return match[1]
   return /^[A-Za-z0-9_-]{10,}$/.test(trimmed) ? trimmed : null
 }
+
+/** Crée un fichier texte dans un dossier (ex. fiche pratique tirée d'une vidéo). Renvoie son identifiant. */
+export async function uploadTextFile(folderId: string, name: string, content: string): Promise<string> {
+  const boundary = `kingso-${Date.now()}`
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    JSON.stringify({ name, parents: [folderId], mimeType: 'text/plain' }),
+    `--${boundary}`,
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    content,
+    `--${boundary}--`,
+  ].join('\r\n')
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await getAccessToken()}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(`Google Drive (création de fichier) : ${data?.error?.message ?? `HTTP ${res.status}`}`)
+  return data.id
+}

@@ -160,6 +160,49 @@ model DriveCategoryMapping {
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 }
 
+// Chaîne YouTube suivie : ses vidéos de dépannage deviennent des fiches pratiques (via « A trier »)
+model VideoSource {
+  id                String       @id @default(cuid())
+  name              String
+  channelId         String       @unique
+  uploadsPlaylistId String
+  url               String
+  visibility        DocumentType @default(PUBLIC) // espace du Drive où déposer les fiches
+  active            Boolean      @default(true)
+  lastCheckedAt     DateTime?
+  createdAt         DateTime     @default(now())
+  videos            VideoItem[]
+}
+
+enum VideoStatus {
+  TO_REVIEW // triée par Kingso, en attente de validation
+  SELECTED // retenue : fiche à rédiger
+  SKIPPED // écartée
+  DONE // fiche déposée dans le Drive
+  ERROR
+}
+
+model VideoItem {
+  id          String      @id @default(cuid())
+  sourceId    String
+  source      VideoSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  videoId     String      @unique
+  title       String
+  description String      @default("")
+  durationSec Int?
+  publishedAt DateTime?
+  relevant    Boolean? // avis de Kingso : aide au dépannage / à l'utilisation ?
+  topic       String? // dépannage, entretien, réglage, installation, commercial…
+  reason      String?
+  status      VideoStatus @default(TO_REVIEW)
+  note        String? // erreur éventuelle
+  driveFileId String? // fiche déposée dans le Drive
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([status])
+}
+
 // Journal des actions de la synchronisation Drive (récapitulatif du back-office)
 model DriveEvent {
   id         String   @id @default(cuid())
