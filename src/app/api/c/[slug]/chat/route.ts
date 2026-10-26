@@ -25,7 +25,7 @@ function parseHistory(raw: unknown): ConversationMessage[] {
   const messages = raw
     .filter((m): m is ConversationMessage =>
       (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string' && m.content.trim() !== '')
-    .slice(-12)
+    .slice(-40) // toute la conversation SAV (marque, modèle, code, essais déjà faits…)
     .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }))
   // L'API Anthropic exige que la conversation commence par un message utilisateur
   while (messages.length > 0 && messages[0].role !== 'user') messages.shift()
@@ -94,15 +94,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Lecture des photos d'abord : le code erreur / modèle visible sert à la recherche
     const imageDescription = await describeImages(images, message)
 
-    // Requête de recherche : message + photos + derniers messages du client (marque, modèle…)
-    const previousUserMessages = history.filter((m) => m.role === 'user').slice(-2).map((m) => m.content)
-    const searchQuery = [...previousUserMessages, message, imageDescription].filter(Boolean).join(' ').slice(-1500)
+    // Recherche par le sens : message + photos + derniers messages du client (une requête trop longue
+    // mélange les sujets et trouve moins bien). Les codes, eux, sont relevés dans toute la conversation.
+    const userMessages = history.filter((m) => m.role === 'user').map((m) => m.content)
+    const searchQuery = [...userMessages.slice(-4), message, imageDescription].filter(Boolean).join(' ').slice(-1500)
+    const codeText = [...userMessages, message, imageDescription].filter(Boolean).join(' ')
 
     const results = await searchScoped(searchQuery, {
       types: assistant.audience === 'CUSTOMER' ? ['PUBLIC'] : ['PUBLIC', 'INTERNAL', 'FRANCHISE'],
       categoryIds: await expandCategoryIds(assistant.categories.map((c) => c.id)),
       webSourceIds: assistant.webSources.map((w) => w.id),
-    })
+    }, 8, codeText)
 
     const context = formatContext(results)
 

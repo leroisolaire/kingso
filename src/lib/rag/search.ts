@@ -45,10 +45,26 @@ function pageLabel(start: number | null, end: number | null): string | undefined
 }
 
 /**
+ * Codes cités dans la question (« 077 », « E5 », « G45 ») : la recherche par le sens les retrouve mal,
+ * on cherche donc aussi les documents dont le TITRE contient le code, avec ou sans zéros initiaux.
+ * Renvoie des motifs d'expression régulière Postgres.
+ */
+export function codePatterns(text: string): string[] {
+  const patterns = new Set<string>()
+  for (const m of text.matchAll(/(?<![\p{L}\d.,])([A-Za-z]{0,2})0*(\d{1,4})(?![\p{L}\d]|[.,]\d)/gu)) {
+    const [whole, prefix, num] = m
+    if (!prefix && num.length < 2) continue // chiffre isolé : trop vague
+    if (!prefix && /^(19|20)\d{2}$/.test(whole)) continue // année (génération 2016…)
+    patterns.add(`(^|[^0-9a-z])${prefix.toLowerCase()}0*${num}([^0-9]|$)`)
+  }
+  return [...patterns]
+}
+
+/**
  * Recherche les passages les plus proches de la question, dans les documents
  * (découpés en passages) et les pages web autorisés.
  */
-export async function searchPassages(query: string, scope: SearchScope, limit = 8): Promise<SearchResult[]> {
+export async function searchPassages(query: string, scope: SearchScope, limit = 8, codeText = query): Promise<SearchResult[]> {
   const searchDocs = scope.types.length > 0 && (scope.categoryIds === null || scope.categoryIds.length > 0)
   const searchPages = scope.webSourceIds === null || scope.webSourceIds.length > 0
   if (!searchDocs && !searchPages) return []
@@ -65,14 +81,18 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
     ? Prisma.empty
     : Prisma.sql`AND "sourceId" = ANY(${scope.webSourceIds}::text[])`
 
-  const [docs, pages] = await Promise.all([
+  type DocRow = {
+    chunkId: string; documentId: string; title: string; content: string; fileUrl: string | null
+    pageStart: number | null; pageEnd: number | null; categoryPath: string | null; drivePath: string | null
+    videoUrl: string | null
+  }
+  // Les plus récents d'abord (le dernier code cité compte le plus)
+  const codes = searchDocs ? codePatterns(codeText).reverse().slice(0, 5) : []
+
+  const [docs, pages, codeDocs] = await Promise.all([
     searchDocs && docLimit > 0
-      ? db.$queryRaw<Array<{
-          documentId: string; title: string; content: string; fileUrl: string | null
-          pageStart: number | null; pageEnd: number | null; categoryPath: string | null; drivePath: string | null
-          videoUrl: string | null
-        }>>`
-          SELECT d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
+      ? db.$queryRaw<DocRow[]>`
+          SELECT ch.id AS "chunkId", d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
                  substring(d.content from 'Lien de la vidéo : (https://[^[:space:]]+)') AS "videoUrl",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
@@ -96,10 +116,33 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
           LIMIT ${pageLimit}
         `
       : [],
+    // Documents dont le titre porte le code cité (ex. « Message 77 ou 78 » pour « 077 »)
+    codes.length > 0
+      ? db.$queryRaw<DocRow[]>`
+          SELECT ch.id AS "chunkId", d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
+                 substring(d.content from 'Lien de la vidéo : (https://[^[:space:]]+)') AS "videoUrl",
+                 CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
+          FROM "DocumentChunk" ch
+          JOIN "Document" d ON d.id = ch."documentId"
+          LEFT JOIN "Category" c ON c.id = d."categoryId"
+          LEFT JOIN "Category" p ON p.id = c."parentId"
+          WHERE ch.embedding IS NOT NULL
+            AND d."reviewState" IS NULL
+            AND d.type = ANY(${scope.types}::"DocumentType"[])
+            AND d.title ~* ANY(${codes}::text[])
+            ${categoryFilter}
+          ORDER BY ch.embedding <=> ${vec}::vector
+          LIMIT 4
+        `
+      : [],
   ])
 
+  // Passages trouvés par le code en tête (sans doublon), puis ceux trouvés par le sens
+  const seenChunks = new Set<string>()
+  const merged = [...codeDocs, ...docs].filter((d) => !seenChunks.has(d.chunkId) && seenChunks.add(d.chunkId))
+
   return [
-    ...docs.map((d) => ({
+    ...merged.map((d) => ({
       id: d.documentId,
       title: d.title,
       content: d.content,
@@ -119,8 +162,9 @@ export async function searchScoped(
   query: string,
   scope: { types: Document['type'][]; categoryIds: string[]; webSourceIds: string[] },
   limit = 8,
+  codeText?: string,
 ): Promise<SearchResult[]> {
-  return searchPassages(query, scope, limit)
+  return searchPassages(query, scope, limit, codeText ?? query)
 }
 
 /** Recherche de l'assistant général (/chat) : toutes catégories, toutes pages web. */
@@ -137,7 +181,7 @@ export function formatContext(results: SearchResult[]): string {
   return results
     .map((r) => {
       const origin = [r.categoryPath, r.title, r.pages].filter(Boolean).join(' — ')
-      const link = r.videoUrl ? ` (vidéo : ${r.videoUrl} )` : r.url ? ` (URL : ${r.url})` : ''
+      const link = r.videoUrl ? ` (FICHE VIDÉO — lien à donner au client : ${r.videoUrl} )` : r.url ? ` (URL : ${r.url})` : ''
       const header = `[${origin}]${link}`
       return `${header}\n${r.content}`
     })

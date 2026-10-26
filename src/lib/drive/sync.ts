@@ -74,9 +74,8 @@ async function makeResolver() {
   async function resolve(path: string[]): Promise<{ type: DocumentType; categoryId: string | null; toSort: boolean } | { skip: string }> {
     const type = path[0] ? VISIBILITY[normalize(path[0])] : undefined
     if (!type) return { skip: 'hors des dossiers Public / Interne / Franchisé' }
-    if (path.length < 2) return { skip: 'à ranger dans un dossier de catégorie, ou dans « À trier »' }
-    // Déposé dans « À trier » : Kingso le classera après l'avoir lu
-    if (normalize(path[1]) === SORT_FOLDER) return { type, categoryId: null, toSort: true }
+    // Déposé dans « À trier », ou directement dans Public / Interne : Kingso le classera après l'avoir lu
+    if (path.length < 2 || normalize(path[1]) === SORT_FOLDER) return { type, categoryId: null, toSort: true }
 
     const folder = path[1]
     let parent = mappingByName.get(normalize(folder))

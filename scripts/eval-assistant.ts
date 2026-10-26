@@ -33,7 +33,7 @@ const CASES: Case[] = [
   {
     name: 'Code erreur inconnu (pas de document)',
     message: 'Mon écran affiche E5',
-    history: [{ role: 'user', content: 'Hitachi' }, { role: 'assistant', content: 'Merci ! Comment puis-je vous aider ?' }],
+    history: [{ role: 'user', content: 'Hitachi Yutaki S' }, { role: 'assistant', content: 'Merci ! Comment puis-je vous aider ?' }],
     expectSav: true,
     expectUnanswered: true,
     forbidden: /(E5|code)\s+(indique|signale|correspond)|généralement|souvent|probl[eè]me de (communication|capteur|pression)/i,
@@ -61,6 +61,51 @@ Entretien par l'utilisateur : nettoyage du filtre à eau (à faire une fois par 
     expectSav: false,
     expectUnanswered: false,
     mustInclude: [/disjoncteur/i, /panneau/i, /vanne/i],
+  },
+  {
+    name: 'Modèle inconnu + fiche vidéo (lien proposé, pas de nouvelle question sur le modèle)',
+    message: 'Je ne sais pas, j\'ai le code 83 qui s\'affiche',
+    history: [
+      { role: 'user', content: 'Hitachi' },
+      { role: 'assistant', content: 'Merci ! Quel est le modèle de votre Yutaki : S, S Combi, S80 ou M ? Si vous ne savez pas, une photo de l\'étiquette suffit.' },
+    ],
+    context: `[PAC > Hitachi > Yutaki — Hitachi Yutaki - Vidéo SAV (code erreur 83 et pression d'eau)] (FICHE VIDÉO — lien à donner au client : https://drive.google.com/file/d/TEST83/view )
+Vidéo de démonstration de l'équipe Le Roi Solaire
+Sujet : le code 83 indique une pression d'eau trop basse dans le circuit de chauffage.
+Équipements concernés : Hitachi Yutaki (tous modèles).
+Public : utilisateur.
+Étapes : 1. Lire la pression sur le manomètre (normale entre 1,5 et 2 bars). 2. Ouvrir les vannes du disconnecteur. 3. Refermer à 1,5 bar.`,
+    expectSav: false,
+    expectUnanswered: false,
+    mustInclude: [/https:\/\/drive\.google\.com\/file\/d\/TEST83\/view/],
+    forbidden: /quel(le)?\s+(est\s+)?(le |la |votre )?(modèle|génération)[^?]*\?/i,
+  },
+  {
+    name: 'Code 077 avec fiche gamme « Message 77 ou 78 » (solution directe, pas de question sur la génération)',
+    message: '077',
+    history: [
+      { role: 'user', content: 'Hitachi' },
+      { role: 'assistant', content: 'Merci ! Que se passe-t-il ?' },
+      { role: 'user', content: 'J\'ai un code erreur' },
+      { role: 'assistant', content: 'Pouvez-vous me donner le code exact affiché à l\'écran ?' },
+    ],
+    context: `[PAC > Hitachi > Yutaki — Hitachi Yutaki - Message 77 ou 78 - explication client — p. 1]
+PAC Yutaki en message 77 ou 78 : ces messages apparaissent lors d'une perte de communication entre la pompe à chaleur et le système de thermostat d'ambiance radio.
+Afin de redémarrer la pompe à chaleur il est possible de retirer cette option thermostat d'ambiance radio, le système continuera à fonctionner en s'appuyant seulement sur la température extérieure (régulation par loi d'eau).
+- Appuyer en même temps sur la touche « flèche retour » et sur la touche « OK » quelques secondes, l'afficheur demande un mot de passe.
+- Composez le mot de passe avec les flèches : Droite, bas, gauche et droite. Validez par « OK ».
+- Entrez dans les réglages, sélectionnez « configuration système », puis « options générales », puis « télécommande ».
+- Modifier le paramètre « radio » de « télécommande 1 » et/ou « télécommande 2 » en « aucun ».
+- Le message 77 ou 78 disparaîtra et le voyant repassera au vert. Appuyez plusieurs fois sur « flèche retour » pour revenir à l'écran d'accueil.
+
+---
+
+[PAC > Hitachi — Hitachi Yutaki (gamme 2016) - Code d'alarme 77 - Défaut de la communication du récepteur sans fil (professionnel) — p. 1]
+Code 77 : défaut de communication du récepteur sans fil intelligent. Vérifier le câblage du récepteur et l'appairage des thermostats.`,
+    expectSav: false,
+    expectUnanswered: false,
+    mustInclude: [/mot de passe/i, /aucun/i],
+    forbidden: /(génération|quel(le)?\s+(est\s+)?(le |la |votre )?modèle)[^?]*\?/i,
   },
   { name: 'Premier message sans marque', message: 'Comment je mets en route ma pompe à chaleur ?', expectSav: false, expectUnanswered: false, forbidden: /^1\./m },
 ]
