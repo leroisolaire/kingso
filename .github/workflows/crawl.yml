@@ -37,4 +37,4 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           MAX_PAGES: '100'
-          DELAY_MS: '21000'
+          DELAY_MS: '2000' # Voyage en offre payante : plus besoin d'attendre 21 s entre deux pages

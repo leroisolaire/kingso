@@ -14,7 +14,7 @@ export interface SearchResult {
   categoryPath?: string
   /** Ex. « p. 12 » ou « p. 12-13 » */
   pages?: string
-  /** Fiche tirée d'une vidéo YouTube : lien de la vidéo, à donner au client */
+  /** Fiche tirée d'une vidéo (YouTube ou Drive) : lien de la vidéo, à donner au client */
   videoUrl?: string
 }
 
@@ -73,7 +73,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
           videoUrl: string | null
         }>>`
           SELECT d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
-                 substring(d.content from 'Lien de la vidéo : (https://www[.]youtube[.]com/watch[?]v=[A-Za-z0-9_-]+)') AS "videoUrl",
+                 substring(d.content from 'Lien de la vidéo : (https://[^[:space:]]+)') AS "videoUrl",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
           JOIN "Document" d ON d.id = ch."documentId"

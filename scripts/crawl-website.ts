@@ -23,7 +23,11 @@ const CONTENT_SELECTORS = ['main', 'article', '.entry-content', '.page-content',
 function normalizeUrl(href: string, base: string, siteUrl: string): string | null {
   try {
     const parsed = new URL(href, base)
-    if (parsed.hostname !== new URL(siteUrl).hostname) return null
+    const site = new URL(siteUrl)
+    if (parsed.hostname !== site.hostname) return null
+    // Source donnée avec un chemin (ex. https://www.atlantic.fr/aide/pompe-a-chaleur) : on reste dans cette rubrique
+    const prefix = site.pathname.replace(/\/$/, '')
+    if (prefix && !parsed.pathname.startsWith(prefix)) return null
     if (SKIP_PATTERNS.some((p) => p.test(parsed.href))) return null
     parsed.hash = ''
     return parsed.href.replace(/\/$/, '') || siteUrl

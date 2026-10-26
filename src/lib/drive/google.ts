@@ -230,3 +230,27 @@ export async function uploadTextFile(folderId: string, name: string, content: st
   if (!res.ok) throw new Error(`Google Drive (création de fichier) : ${data?.error?.message ?? `HTTP ${res.status}`}`)
   return data.id
 }
+
+/** Contenu brut d'un fichier, en flux (vidéos : jamais chargées entièrement en mémoire). */
+export async function openFileStream(fileId: string): Promise<ReadableStream<Uint8Array>> {
+  const res = await driveFetch(`/files/${fileId}`, { alt: 'media' })
+  if (!res.body) throw new Error('Google Drive : fichier vide.')
+  return res.body
+}
+
+/** Lien de consultation d'un fichier dans Google Drive (lecteur vidéo intégré). */
+export function driveViewUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/view`
+}
+
+/** Ouvre (ou ferme) l'accès « tous les utilisateurs disposant du lien », en lecture seule. */
+export async function setPublicLink(fileId: string, enabled: boolean): Promise<void> {
+  const res = await driveFetch(`/files/${fileId}/permissions`, { fields: 'permissions(id,type)' })
+  const anyone = ((await res.json()).permissions ?? []).filter((p: { type: string }) => p.type === 'anyone')
+  if (enabled && anyone.length === 0) {
+    await driveFetch(`/files/${fileId}/permissions`, {}, { method: 'POST', body: { role: 'reader', type: 'anyone' } })
+  }
+  if (!enabled) {
+    for (const p of anyone) await driveFetch(`/files/${fileId}/permissions/${p.id}`, {}, { method: 'DELETE' })
+  }
+}

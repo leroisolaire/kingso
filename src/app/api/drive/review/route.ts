@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth/dal'
 import { db } from '@/lib/db/client'
 import { findOrCreateFolder, moveFile } from '@/lib/drive/google'
 import { logDriveEvent } from '@/lib/drive/sync'
+import { syncVideoSharing } from '@/lib/videos/driveVideos'
 
 type Action = 'public' | 'internal' | 'ignore' | 'retry'
 
@@ -43,6 +44,8 @@ export async function POST(request: NextRequest) {
       })
       await logDriveEvent('MOVED_INTERNAL', doc.title, `Déplacé dans ${drivePath}`, doc.id)
     }
+    // Vidéo : lien ouvert si validée en Public, refermé sinon
+    await syncVideoSharing(doc.id).catch((e) => logDriveEvent('ERROR', doc.title, `Partage de la vidéo : ${e instanceof Error ? e.message : e}`, doc.id))
     return NextResponse.json({ ok: true })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 400 })

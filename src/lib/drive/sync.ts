@@ -9,6 +9,7 @@ import {
   type DriveFile,
 } from './google'
 import { classifyDocument, type FamilyOption } from './classify'
+import { MAX_VIDEO_BYTES, isVideoFile, readDriveVideo, syncVideoSharing } from '@/lib/videos/driveVideos'
 
 // Synchronisation Drive → base documentaire. Le Drive fait foi :
 //   1er niveau de dossier = visibilité (Public / Interne / Franchisé)
@@ -137,12 +138,14 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
     for (const file of files) {
       const where = [...file.path, file.name].join('/')
       const fileName = effectiveFileName(file)
-      if (!fileName || !(SUPPORTED_EXTENSIONS as readonly string[]).includes(fileExtension(fileName))) {
+      // Vidéos : lues par Gemini, qui en tire une fiche (voir lib/videos/driveVideos)
+      const video = isVideoFile(file.mimeType, fileName)
+      if (!fileName || (!video && !(SUPPORTED_EXTENSIONS as readonly string[]).includes(fileExtension(fileName)))) {
         report.skipped.push({ path: where, reason: 'format non pris en charge' })
         continue
       }
-      if (!isGoogleNative(file.mimeType) && Number(file.size ?? 0) > MAX_FILE_BYTES) {
-        report.skipped.push({ path: where, reason: 'plus de 50 Mo (à découper)' })
+      if (!isGoogleNative(file.mimeType) && Number(file.size ?? 0) > (video ? MAX_VIDEO_BYTES : MAX_FILE_BYTES)) {
+        report.skipped.push({ path: where, reason: video ? 'vidéo de plus de 1,5 Go (à raccourcir)' : 'plus de 50 Mo (à découper)' })
         continue
       }
       const target = await resolve(file.path)
@@ -194,6 +197,10 @@ export async function scanDrive(sourceId: string): Promise<SyncReport> {
           // Le titre fait partie de l'indexation de chaque passage
           if (renamed && existing.status === 'READY') await rechunkFromContent(existing.id, existing.content)
           report.updated++
+        }
+        // Vidéo passée en Interne ou remise à trier : son lien public est refermé
+        if (video && data.type !== undefined) {
+          await syncVideoSharing(existing.id).catch((e) => logDriveEvent('ERROR', title, `Partage de la vidéo : ${e instanceof Error ? e.message : e}`, existing.id))
         }
         continue
       }
@@ -444,6 +451,12 @@ async function classifyNext(rootId: string, result: QueueResult): Promise<boolea
       })
     }
     if (c.confidential) await logDriveEvent('CONFIDENTIAL', c.title, reviewNote ?? undefined, doc.id)
+    // Vidéo en Public contrôlée : lien ouvert pour que les clients puissent la regarder
+    try {
+      if (await syncVideoSharing(doc.id)) await logDriveEvent('VIDEO_SHARED', c.title, 'Vidéo consultable par lien (clients)', doc.id)
+    } catch (e) {
+      await logDriveEvent('ERROR', c.title, `Partage de la vidéo refusé par Google Drive : ${e instanceof Error ? e.message : e}`, doc.id)
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     // Retenté à la prochaine synchronisation ; le document reste hors des chats en attendant
@@ -465,7 +478,7 @@ export async function processDriveQueue(budgetMs = 240_000): Promise<QueueResult
     const doc = await db.document.findFirst({
       where: pendingWhere,
       orderBy: { updatedAt: 'asc' },
-      select: { id: true, title: true, driveFileId: true, driveMd5: true },
+      select: { id: true, title: true, driveFileId: true, driveMd5: true, mimeType: true, fileName: true },
     })
     if (!doc) {
       // Plus rien à lire : classement / contrôle de confidentialité des documents lus
@@ -474,7 +487,11 @@ export async function processDriveQueue(budgetMs = 240_000): Promise<QueueResult
     }
 
     try {
-      if (doc.driveMd5 === null) {
+      if (doc.driveMd5 === null && isVideoFile(doc.mimeType, doc.fileName)) {
+        // Une vidéo peut demander plusieurs minutes : seulement en début d'appel, sinon au suivant
+        if (Date.now() - started > 30_000) break
+        await readDriveVideo(doc.id, doc.driveFileId!)
+      } else if (doc.driveMd5 === null) {
         const outcome = await refreshFromDrive(doc.id, doc.driveFileId!)
         if (outcome === 'merged') {
           result.processed.push(`${doc.title} (déjà présent, rattaché)`)
