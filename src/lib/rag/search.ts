@@ -93,7 +93,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
     searchDocs && docLimit > 0
       ? db.$queryRaw<DocRow[]>`
           SELECT ch.id AS "chunkId", d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
-                 substring(d.content from 'Lien de la vidéo : (https://[^[:space:]]+)') AS "videoUrl",
+                 substring(d.content from '(https://(www[.])?(youtube[.]com/watch[?]v=|youtu[.]be/|drive[.]google[.]com/file/d/)[^[:space:]]+)') AS "videoUrl",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
           JOIN "Document" d ON d.id = ch."documentId"
@@ -120,7 +120,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
     codes.length > 0
       ? db.$queryRaw<DocRow[]>`
           SELECT ch.id AS "chunkId", d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
-                 substring(d.content from 'Lien de la vidéo : (https://[^[:space:]]+)') AS "videoUrl",
+                 substring(d.content from '(https://(www[.])?(youtube[.]com/watch[?]v=|youtu[.]be/|drive[.]google[.]com/file/d/)[^[:space:]]+)') AS "videoUrl",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
           JOIN "Document" d ON d.id = ch."documentId"
@@ -181,7 +181,8 @@ export function formatContext(results: SearchResult[]): string {
   return results
     .map((r) => {
       const origin = [r.categoryPath, r.title, r.pages].filter(Boolean).join(' — ')
-      const link = r.videoUrl ? ` (FICHE VIDÉO — lien à donner au client : ${r.videoUrl} )` : r.url ? ` (URL : ${r.url})` : ''
+      const kind = r.videoUrl?.startsWith('https://drive.google.com/') ? "VIDÉO DE L'ÉQUIPE" : 'YOUTUBE'
+      const link = r.videoUrl ? ` (FICHE VIDÉO ${kind} — lien à donner au client : ${r.videoUrl} )` : r.url ? ` (URL : ${r.url})` : ''
       const header = `[${origin}]${link}`
       return `${header}\n${r.content}`
     })

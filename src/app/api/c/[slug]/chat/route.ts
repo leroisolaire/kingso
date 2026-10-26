@@ -2,6 +2,8 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { askAssistant, describeImages, type ImageInput } from '@/lib/ai/assistant'
 import type { ConversationMessage } from '@/lib/ai/kingso'
 import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
+import { suggestVideo } from '@/lib/rag/videoSuggest'
+import type { Document } from '@/types/document'
 import { expandCategoryIds, getHomeTiles } from '@/lib/db/queries/assistants'
 import { resolveAssistant } from '@/lib/assistants/resolve'
 import { saveAttachments } from '@/lib/storage/attachments'
@@ -97,12 +99,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Recherche par le sens : message + photos + derniers messages du client (une requête trop longue
     // mélange les sujets et trouve moins bien). Les codes, eux, sont relevés dans toute la conversation.
     const userMessages = history.filter((m) => m.role === 'user').map((m) => m.content)
-    const searchQuery = [...userMessages.slice(-4), message, imageDescription].filter(Boolean).join(' ').slice(-1500)
+    // Début de la dernière réponse de Kingso : le sujet en cours (ex. « il faut nettoyer le filtre à eau »),
+    // pour que « c'est fait, comment je remonte ? » retrouve les bons documents
+    const lastAnswer = history.findLast((m) => m.role === 'assistant')?.content.slice(0, 300) ?? ''
+    const searchQuery = [...userMessages.slice(-4), lastAnswer, message, imageDescription].filter(Boolean).join(' ').slice(-1500)
     const codeText = [...userMessages, message, imageDescription].filter(Boolean).join(' ')
 
-    const results = await searchScoped(searchQuery, {
-      types: assistant.audience === 'CUSTOMER' ? ['PUBLIC'] : ['PUBLIC', 'INTERNAL', 'FRANCHISE'],
+    const docScope = {
+      types: (assistant.audience === 'CUSTOMER' ? ['PUBLIC'] : ['PUBLIC', 'INTERNAL', 'FRANCHISE']) as Document['type'][],
       categoryIds: await expandCategoryIds(assistant.categories.map((c) => c.id)),
+    }
+    const results = await searchScoped(searchQuery, {
+      ...docScope,
       webSourceIds: assistant.webSources.map((w) => w.id),
     }, 8, codeText)
 
@@ -124,12 +132,17 @@ export async function POST(request: NextRequest, { params }: Params) {
       history,
     })
 
+    // Procédure donnée sans vidéo : on cherche une vidéo de démonstration de cette opération
+    const video = await suggestVideo({ answer: response.content, conversation: codeText, scope: docScope })
+      .catch((e) => { console.error('[suggestVideo]', e instanceof Error ? e.message : e); return null })
+    if (video) response.content = `${response.content.trimEnd()}\n\nVous pouvez voir la démonstration en vidéo : ${video.url} `
+
     const attachments = await saveAttachments(assistant.slug, images)
     // Le texte lu sur les photos est gardé dans l'historique : il sert aux messages suivants
     const historyUserMessage = imageDescription
       ? `${message}${message ? '\n' : ''}[Photo : ${imageDescription}]`
       : message
-    const documentsUsed = sourceIds(results)
+    const documentsUsed = [...new Set([...sourceIds(results), ...(video ? [video.documentId] : [])])]
 
     const entry = await db.history.create({
       select: { id: true },
