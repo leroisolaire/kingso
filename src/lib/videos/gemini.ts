@@ -24,14 +24,22 @@ N'ajoute rien qui ne soit pas dans la vidéo.`
 
 /** Fiche pratique rédigée à partir de la vidéo (texte brut). */
 export async function summarizeVideo(url: string): Promise<string> {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey() ?? '' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ file_data: { file_uri: url } }, { text: PROMPT }] }],
-    }),
-  })
-  const data = await res.json().catch(() => ({}))
+  // Gemini répond parfois « surchargé » (429/500/503) : quelques nouvelles tentatives espacées
+  const waits = [10_000, 25_000]
+  let res: Response
+  let data
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey() ?? '' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ file_data: { file_uri: url } }, { text: PROMPT }] }],
+      }),
+    })
+    data = await res.json().catch(() => ({}))
+    if (res.ok || ![429, 500, 503].includes(res.status) || attempt >= waits.length) break
+    await new Promise((r) => setTimeout(r, waits[attempt]))
+  }
   if (!res.ok) throw new Error(`Gemini : ${data?.error?.message ?? `HTTP ${res.status}`}`)
   const text = (data.candidates?.[0]?.content?.parts ?? [])
     .map((p: { text?: string }) => p.text ?? '')

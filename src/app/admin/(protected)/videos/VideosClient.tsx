@@ -119,14 +119,16 @@ export default function VideosClient({ apiKeyConfigured, geminiConfigured, drive
   })
 
   /** Fiches rédigées par Gemini puis synchronisation du Drive (rangement, contrôle, indexation). */
-  const processAll = async () => {
-    let done = 0
+  const processAll = async (total: number) => {
+    let count = 0
+    const errors: string[] = []
     for (;;) {
-      setStatus(`Rédaction des fiches : ${done} faite(s)… (environ une minute par vidéo)`)
+      setStatus(`Rédaction des fiches : ${count} / ${total}… (environ une minute par vidéo)`)
       const r = await post('/api/videos/process')
-      done += r.done.length
-      if (r.errors.length) setError(r.errors.map((e: { title: string; message: string }) => `${e.title} : ${e.message}`).join(' / '))
-      if (r.remaining === 0) break
+      count += r.done.length + r.errors.length
+      errors.push(...r.errors.map((e: { title: string; message: string }) => `${e.title} : ${e.message}`))
+      if (errors.length) setError(errors.join(' / '))
+      if (r.remaining === 0 || r.done.length + r.errors.length === 0) break
     }
     setStatus('Fiches déposées dans « A trier » : synchronisation du Drive…')
     await post('/api/drive/sync')
@@ -143,12 +145,15 @@ export default function VideosClient({ apiKeyConfigured, geminiConfigured, drive
     const skippedIds = toReview.filter((v) => unchecked.has(v.id)).map((v) => v.id)
     await post('/api/videos/review', { selected, skipped: skippedIds })
     setUnchecked(new Set())
-    if (selected.length) await processAll()
+    // La liste à valider se vide tout de suite ; le traitement continue en dessous
+    router.refresh()
+    if (selected.length) await processAll(selected.length + selectedCount)
   })
 
   const reselect = (id: string) => run(`re-${id}`, async () => {
     await post('/api/videos/review', { selected: [id] })
-    await processAll()
+    router.refresh()
+    await processAll(selectedCount + 1)
   })
 
   const toggle = (id: string) => setUnchecked((prev) => {
@@ -276,7 +281,7 @@ export default function VideosClient({ apiKeyConfigured, geminiConfigured, drive
             Kingso a présélectionné ces vidéos d&apos;après leur titre et leur description. Décochez celles à écarter.
           </p>
           {selectedCount > 0 && toReview.length === 0 && (
-            <Button type="button" size="sm" onClick={() => run('process', processAll)} loading={busy === 'process'}>
+            <Button type="button" size="sm" onClick={() => run('process', () => processAll(selectedCount))} loading={busy === 'process'}>
               Reprendre le traitement ({selectedCount} en attente)
             </Button>
           )}

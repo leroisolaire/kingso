@@ -9,7 +9,7 @@ export const maxDuration = 300
 export async function POST() {
   if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
-    return NextResponse.json(await processSelectedVideos(240_000))
+    return NextResponse.json(await processSelectedVideos(240_000, 1))
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 })
   }

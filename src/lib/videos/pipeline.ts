@@ -83,11 +83,12 @@ export interface ProcessReport {
 }
 
 /** Rédige la fiche des vidéos retenues et la dépose dans « A trier » (relancer tant que remaining > 0). */
-export async function processSelectedVideos(budgetMs = 240_000): Promise<ProcessReport> {
+/** max : nombre de vidéos par appel (une à la fois depuis le back-office, pour suivre la progression). */
+export async function processSelectedVideos(budgetMs = 240_000, max = Infinity): Promise<ProcessReport> {
   const started = Date.now()
   const report: ProcessReport = { done: [], errors: [], remaining: 0 }
 
-  while (Date.now() - started < budgetMs - 60_000) {
+  while (Date.now() - started < budgetMs - 60_000 && report.done.length + report.errors.length < max) {
     const item = await db.videoItem.findFirst({
       where: { status: 'SELECTED' },
       orderBy: { publishedAt: 'desc' },
