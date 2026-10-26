@@ -193,8 +193,8 @@ export function useAssistantChat(slug: string) {
         setMascotState('confused')
         later(() => setMascotState('idle'), 3000)
       } else {
+        // Kingso reste sur la vidéo où il parle, puis revient au repos
         setMascotState('talking')
-        later(() => setMascotState('happy'), 3000)
         later(() => setMascotState('idle'), 9000)
       }
     } catch {
@@ -224,7 +224,8 @@ export function useAssistantChat(slug: string) {
       const data = await response.json().catch(() => ({}))
       if (!response.ok) return { ok: false, error: data.error ?? 'Une erreur est survenue.', fields: data.fields }
       setEscalationSent(true)
-      setMascotState('happy')
+      // Pas d'air content ici (le client a un problème) : Kingso parle pour confirmer l'envoi
+      setMascotState('talking')
       later(() => setMascotState('idle'), 4000)
       return { ok: true }
     } catch {
