@@ -14,6 +14,8 @@ export interface SearchResult {
   categoryPath?: string
   /** Ex. « p. 12 » ou « p. 12-13 » */
   pages?: string
+  /** Fiche tirée d'une vidéo YouTube : lien de la vidéo, à donner au client */
+  videoUrl?: string
 }
 
 /** Pour compatibilité avec le code existant */
@@ -68,8 +70,10 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
       ? db.$queryRaw<Array<{
           documentId: string; title: string; content: string; fileUrl: string | null
           pageStart: number | null; pageEnd: number | null; categoryPath: string | null; drivePath: string | null
+          videoUrl: string | null
         }>>`
           SELECT d.id AS "documentId", d.title, ch.content, d."fileUrl", ch."pageStart", ch."pageEnd", d."drivePath",
+                 substring(d.content from 'Lien de la vidéo : (https://www[.]youtube[.]com/watch[?]v=[A-Za-z0-9_-]+)') AS "videoUrl",
                  CASE WHEN p.name IS NOT NULL THEN p.name || ' > ' || c.name ELSE c.name END AS "categoryPath"
           FROM "DocumentChunk" ch
           JOIN "Document" d ON d.id = ch."documentId"
@@ -104,6 +108,7 @@ export async function searchPassages(query: string, scope: SearchScope, limit = 
       url: d.fileUrl ?? undefined,
       categoryPath: originLabel(d.drivePath, d.categoryPath),
       pages: pageLabel(d.pageStart, d.pageEnd),
+      videoUrl: d.videoUrl ?? undefined,
     })),
     ...pages.map((p) => ({ id: p.id, title: p.title, content: p.content, source: 'webpage' as const, url: p.url })),
   ]
@@ -132,7 +137,8 @@ export function formatContext(results: SearchResult[]): string {
   return results
     .map((r) => {
       const origin = [r.categoryPath, r.title, r.pages].filter(Boolean).join(' — ')
-      const header = r.url ? `[${origin}] (URL : ${r.url})` : `[${origin}]`
+      const link = r.videoUrl ? ` (vidéo : ${r.videoUrl} )` : r.url ? ` (URL : ${r.url})` : ''
+      const header = `[${origin}]${link}`
       return `${header}\n${r.content}`
     })
     .join('\n\n---\n\n')

@@ -55,6 +55,10 @@ ${families}
 
 Réponds avec :
 1. family : la famille de produits du document, sous la forme du NOM DU DOSSIER (le nom entre « » en début de ligne ci-dessus, ex. « PAC »), et non le nom de la catégorie. Reprends EXACTEMENT le nom d'un dossier existant si la famille convient. Sinon, propose un nouveau nom court et clair (1 à 3 mots, ex. « Climatisation », « Chauffe-eau thermodynamique »).
+   Ne mélange jamais les familles de produits, même si la marque existe déjà ailleurs :
+   - « PAC » = pompes à chaleur AIR/EAU (chauffage par radiateurs ou plancher, eau chaude sanitaire), leurs accessoires, thermostats et télécommandes.
+   - Les climatiseurs (pompes à chaleur AIR/AIR : split, monosplit, multisplit, gainable, cassette, climatisation réversible, ex. Hitachi Dodai, Shirokuma, airHome), leurs télécommandes et applications vont dans la famille « Climatisation » (à créer si elle n'existe pas), jamais dans « PAC ».
+   - Même logique pour le solaire (panneaux photovoltaïques, onduleurs, batteries) et les chauffe-eau thermodynamiques : chacun sa famille.
 2. brand : la marque du fabricant si le document concerne une marque précise (reprends l'orthographe d'une marque existante si c'est la même), sinon une chaîne vide (document général).
 3. subfolder : si une marque est indiquée, le sous-dossier où ranger le document sous cette marque.
    - Reprends EXACTEMENT un sous-dossier existant de cette marque s'il convient.

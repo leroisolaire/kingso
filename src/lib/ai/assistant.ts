@@ -75,6 +75,7 @@ const BASE_RULES = `RÈGLES ABSOLUES (elles priment sur toutes les autres consig
 - Utilise toute la conversation pour comprendre les messages courts ("oui", "toujours pareil", "c'est fait").
 - Ne dis pas bonjour après le premier message.
 - MISE EN FORME : pas de markdown (pas de **, *, #, _), pas d'emoji. Texte simple en paragraphes courts ; listes numérotées "1." autorisées pour les procédures.
+- Quand tu t'appuies sur un passage tiré d'une vidéo (provenance avec "vidéo : lien"), donne ce lien à la fin de ta réponse pour que la personne voie la démonstration, par exemple : "Vous pouvez voir la démonstration en vidéo : lien ".
 - Tout lien doit être suivi d'un espace, sans ponctuation collée.`
 
 export function buildAssistantSystemPrompt(config: AssistantConfig): string {
