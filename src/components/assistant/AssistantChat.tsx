@@ -154,8 +154,11 @@ interface AssistantChatProps {
   caseMode?: { token: string; resolved: boolean }
 }
 
-/** Boutons du chat personnel : « Mon problème est résolu » / « Être rappelé ». */
-function CaseActions({ token, initial }: { token: string; initial: 'open' | 'resolved' }) {
+/**
+ * Boutons du chat personnel : « Mon problème est résolu » dès la 1re réponse ; « Être rappelé » seulement
+ * quand Kingso le propose (comme le bouton SAV du chat) ou après plusieurs échanges : le client essaie d'abord.
+ */
+function CaseActions({ token, initial, showCallback }: { token: string; initial: 'open' | 'resolved'; showCallback: boolean }) {
   const [state, setState] = useState<'open' | 'resolved' | 'callback'>(initial)
   const [busy, setBusy] = useState(false)
   const act = async (action: 'resolve' | 'callback') => {
@@ -183,14 +186,14 @@ function CaseActions({ token, initial }: { token: string; initial: 'open' | 'res
       >
         ✓ Mon problème est résolu
       </button>
-      <button
+      {showCallback && <button
         type="button"
         disabled={busy}
         onClick={() => act('callback')}
         className="min-h-12 rounded-2xl border-2 border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
       >
         Être rappelé
-      </button>
+      </button>}
     </div>
   )
 }
@@ -424,7 +427,11 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion, 
             {(isTyping || routing) && <TypingBubble />}
 
             {caseMode && hydrated && !isTyping && messages.some((m) => m.role === 'ASSISTANT' && !m.isError) && (
-              <CaseActions token={caseMode.token} initial={caseMode.resolved ? 'resolved' : 'open'} />
+              <CaseActions
+                token={caseMode.token}
+                initial={caseMode.resolved ? 'resolved' : 'open'}
+                showCallback={escalationOffered || userMessageCount >= 4}
+              />
             )}
 
             {assistant.escalationEnabled && (cardVisible || escalationSent) && (

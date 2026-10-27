@@ -150,7 +150,7 @@ export async function askAssistant(params: {
 
 DOSSIER DU CLIENT (il a laissé un message au SAV et a ouvert le lien personnel envoyé par email) :
 ${caseContext}
-Tu connais déjà ces informations : ne redemande pas la marque ni le modèle quand ils sont indiqués, et commence directement par la solution. Ne cite jamais son adresse, son téléphone ni son email. S'il veut être rappelé, dis-lui qu'il peut utiliser le bouton « Être rappelé » sous la conversation.`
+Tu connais déjà ces informations : ne redemande pas la marque ni le modèle quand ils sont indiqués, et commence directement par la solution. Ne cite jamais son adresse, son téléphone ni son email. Ici, le formulaire SAV est remplacé par un bouton « Être rappelé » sous la conversation (ses coordonnées sont déjà connues) : quand les règles te font proposer le SAV, parle de ce bouton plutôt que du formulaire, et ajoute quand même le marqueur [[SAV]].`
     : buildAssistantSystemPrompt(config)
 
   const contextText = context.trim()
