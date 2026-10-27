@@ -31,6 +31,14 @@ export const CATEGORY_LABELS: Record<SavCategory, string> = {
   UNCLEAR: 'Pas clair',
 }
 
+export const CATEGORY_COLORS: Record<SavCategory, string> = {
+  SELF_HELP: 'bg-emerald-100 text-emerald-800 ring-emerald-300',
+  INTERVENTION: 'bg-orange-100 text-orange-800 ring-orange-300',
+  ADMIN: 'bg-sky-100 text-sky-800 ring-sky-300',
+  OTHER_PRODUCT: 'bg-violet-100 text-violet-800 ring-violet-300',
+  UNCLEAR: 'bg-gray-100 text-gray-700 ring-gray-300',
+}
+
 /** Onglets de la liste des dossiers. */
 export const SAV_TABS: { key: string; label: string; statuses: SavStatus[] }[] = [
   { key: 'a-traiter', label: 'À traiter', statuses: ['NEW'] },

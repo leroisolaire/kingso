@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
-import { CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
+import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
 interface CaseData {
@@ -191,7 +191,7 @@ export default function CaseView({ data, link, paused, templates, assistants, su
         <select
           value={data.category}
           onChange={(e) => patch('category', { category: e.target.value })}
-          className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm"
+          className={`rounded-lg px-2 py-1 text-sm font-semibold ring-1 ${CATEGORY_COLORS[data.category]}`}
         >
           {Object.entries(CATEGORY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>

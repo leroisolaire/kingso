@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { after } from 'next/server'
 import { db } from '@/lib/db/client'
+import { checkMailboxIfStale } from '@/lib/sav/gmail'
 import { formatPhone } from '@/lib/sav/phone'
 import { formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
-import { CATEGORY_LABELS, SAV_TABS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
+import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 import { refreshSavTimers } from '@/lib/sav/timers'
 import NewCaseForm from './NewCaseForm'
 
@@ -16,13 +18,15 @@ function emailState(c: { email: string | null; emailTemplate: string | null; ema
     ? { label: `Programmé ${formatParisDate(c.emailSentAt, true)}`, cls: 'text-sky-700' }
     : { label: 'Email envoyé', cls: 'text-green-700' }
   if (c.emailTemplate && c.email) return { label: 'Email à valider', cls: 'text-amber-700 font-semibold' }
-  if (!c.email) return { label: 'Pas d\'email', cls: 'text-gray-400' }
+  if (!c.email) return { label: 'Pas d\'email', cls: 'font-medium text-gray-500' }
   return { label: '', cls: '' }
 }
 
 export default async function SavPage({ searchParams }: { searchParams: Promise<{ onglet?: string }> }) {
   // Passages automatiques en « À rappeler » (pas de clic, pas de nouvelles) avant d'afficher les listes
   await refreshSavTimers().catch(() => 0)
+  // Nouveaux messages du répondeur dans la boîte kingso@ (s'ils n'ont pas déjà été relevés par la notification Gmail)
+  after(() => checkMailboxIfStale().catch(() => null))
   const { onglet } = await searchParams
   const tab = SAV_TABS.find((t) => t.key === onglet) ?? SAV_TABS[0]
   const done = tab.statuses.some((s) => s === 'RESOLVED' || s === 'CLOSED')
@@ -102,11 +106,13 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                       {c._count.messages > 1 && <span className="text-xs text-orange-700">{c._count.messages} messages</span>}
                     </div>
                     <p className="mt-0.5 line-clamp-2 text-sm text-gray-600">{c.summary}</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      {CATEGORY_LABELS[c.category]}
-                      {c.urgentReason && c.urgent ? ` · ${c.urgentReason}` : ''}
-                      {!c.clientId && c.source !== 'CHAT' ? ' · client non identifié' : ''}
-                    </p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className={`rounded-md px-2 py-0.5 font-semibold ring-1 ${CATEGORY_COLORS[c.category]}`}>{CATEGORY_LABELS[c.category]}</span>
+                      {!c.clientId && c.source !== 'CHAT' && (
+                        <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-900 ring-1 ring-yellow-400">Client non identifié</span>
+                      )}
+                      {c.urgent && c.urgentReason && <span className="font-medium text-red-700">⚠ {c.urgentReason}</span>}
+                    </div>
                   </div>
                   <div className="flex shrink-0 flex-row gap-3 text-xs sm:flex-col sm:items-end sm:gap-1">
                     <span className={`rounded-full px-2 py-0.5 ${STATUS_COLORS[c.status]}`}>{STATUS_LABELS[c.status]}</span>

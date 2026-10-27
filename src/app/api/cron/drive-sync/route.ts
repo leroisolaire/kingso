@@ -3,6 +3,7 @@ import { db } from '@/lib/db/client'
 import { processDriveQueue, scanDrive } from '@/lib/drive/sync'
 import { checkVideoSources } from '@/lib/videos/pipeline'
 import { syncClientFile } from '@/lib/sav/clientSync'
+import { checkMailbox, renewWatch } from '@/lib/sav/gmail'
 
 // Synchronisation nocturne, appelée par Vercel Cron (vercel.json).
 // Vercel envoie « Authorization: Bearer <CRON_SECRET> » quand la variable CRON_SECRET existe.
@@ -19,10 +20,13 @@ export async function GET(request: NextRequest) {
   // Fichier client du SAV : réimporté s'il a changé
   const clients = await syncClientFile().catch((e) => ({ error: e instanceof Error ? e.message : String(e) }))
 
+  // Boîte kingso@ : notification Gmail renouvelée (elle expire après 7 jours) et messages éventuellement manqués
+  const mailbox = await renewWatch().then(() => checkMailbox(60_000)).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }))
+
   const sources = await db.driveSource.findMany()
   const reports = []
   for (const source of sources) reports.push(await scanDrive(source.id))
   // Ce qui ne tient pas dans le temps imparti sera repris la nuit suivante (ou via le back-office)
   const queue = await processDriveQueue(250_000)
-  return NextResponse.json({ videos, clients, reports, queue })
+  return NextResponse.json({ videos, clients, mailbox, reports, queue })
 }

@@ -112,11 +112,102 @@ function ClientFileCard({ folderId, state }: { folderId: string; state: ClientFi
   )
 }
 
-export default function SettingsClient({ settings, templates, assistants, clientFile }: {
+export interface MailboxInfo {
+  expected: string
+  configured: boolean
+  connected: boolean
+  email: string | null
+  connectedAt: string | null
+  connectedBy: string | null
+  checkedAt: string | null
+  lastImportAt: string | null
+  imported: number
+  error: string | null
+  instant: boolean
+  message: string | null
+}
+
+const parisDate = (iso?: string | null) =>
+  (iso ? new Date(iso).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '')
+
+/** Boîte kingso@ : réception automatique des messages du répondeur (lecture seule). */
+function MailboxCard({ m }: { m: MailboxInfo }) {
+  const router = useRouter()
+  const [busy, setBusy] = useState<string | null>(null)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
+    m.message ? { ok: m.message === 'ok', text: m.message === 'ok' ? 'Boîte connectée.' : m.message } : null,
+  )
+
+  const run = async (action: 'check' | 'disconnect') => {
+    if (action === 'disconnect' && !confirm('Arrêter la réception automatique des messages du répondeur ?')) return
+    setBusy(action)
+    setMessage(null)
+    const res = await fetch('/api/sav/gmail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
+    const json = await res.json().catch(() => ({}))
+    setBusy(null)
+    if (!res.ok) setMessage({ ok: false, text: json.error ?? `Erreur ${res.status}` })
+    else if (action === 'check') {
+      const parts = [
+        `${json.found} nouveau(x) message(s) du répondeur`,
+        json.created ? `${json.created} dossier(s) créé(s)` : '',
+        json.followUps ? `${json.followUps} relance(s) ajoutée(s)` : '',
+        json.duplicates ? `${json.duplicates} déjà importé(s)` : '',
+        json.remaining ? `${json.remaining} restant(s) : relancez` : '',
+      ].filter(Boolean)
+      setMessage({ ok: true, text: `${parts.join(', ')}.` })
+    } else setMessage({ ok: true, text: 'Boîte déconnectée.' })
+    router.refresh()
+  }
+
+  return (
+    <Card title={`Boîte mail ${m.expected}`}>
+      <p className="text-sm text-gray-500">
+        Les emails du répondeur (Connectel) transférés vers {m.expected} deviennent automatiquement des dossiers SAV.
+        Kingso a seulement le droit de <strong>lire</strong> cette boîte : il ne peut ni envoyer, ni supprimer, ni modifier.
+      </p>
+      {m.connected ? (
+        <div className="space-y-1 rounded-lg bg-green-50 p-3 text-sm text-gray-700">
+          <p>✓ Connectée : <strong>{m.email}</strong>{m.connectedAt ? ` depuis le ${parisDate(m.connectedAt)}` : ''}{m.connectedBy ? ` (par ${m.connectedBy})` : ''}</p>
+          <p>
+            {m.instant
+              ? 'Réception instantanée active.'
+              : 'Relevé à chaque ouverture de l\'espace SAV et chaque nuit (réception instantanée pas encore configurée).'}
+          </p>
+          {m.checkedAt && <p className="text-xs text-gray-500">Dernier relevé : {parisDate(m.checkedAt)}{m.lastImportAt ? ` · dernier message importé : ${parisDate(m.lastImportAt)}` : ''} · {m.imported} message(s) importé(s) au total</p>}
+          {m.error && <p className="text-red-600">Erreur au dernier relevé : {m.error}</p>}
+        </div>
+      ) : (
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Pas encore connectée. Cliquez sur « Connecter », puis choisissez le compte <strong>{m.expected}</strong> chez Google et acceptez la lecture des emails.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {m.connected ? (
+          <>
+            <Button type="button" onClick={() => run('check')} loading={busy === 'check'} disabled={busy !== null}>Relever maintenant</Button>
+            <Button type="button" variant="ghost" onClick={() => run('disconnect')} loading={busy === 'disconnect'} disabled={busy !== null}>Déconnecter</Button>
+          </>
+        ) : (
+          <a
+            href={m.configured ? '/api/sav/gmail/connect' : undefined}
+            className={`inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium text-white ${m.configured ? 'bg-amber-500 hover:bg-amber-600' : 'cursor-not-allowed bg-gray-300'}`}
+          >
+            Connecter {m.expected}
+          </a>
+        )}
+      </div>
+      {!m.configured && <p className="text-sm text-red-600">Identifiants Google (GOOGLE_OAUTH_CLIENT_ID / SECRET) absents sur ce serveur.</p>}
+      {message && <p className={`text-sm ${message.ok ? 'text-green-700' : 'text-red-600'}`}>{message.text}</p>}
+    </Card>
+  )
+}
+
+export default function SettingsClient({ settings, templates, assistants, clientFile, mailbox }: {
   settings: SavSettings
   templates: Template[]
   assistants: { slug: string; name: string }[]
   clientFile: ClientFileState & { count: number }
+  mailbox: MailboxInfo
 }) {
   const router = useRouter()
   const [s, setS] = useState(settings)
@@ -147,6 +238,8 @@ export default function SettingsClient({ settings, templates, assistants, client
 
   return (
     <div className="space-y-4">
+      <MailboxCard m={mailbox} />
+
       <Card title="Envoi des emails">
         <div className={`flex flex-wrap items-center justify-between gap-3 rounded-lg p-3 ${s.paused ? 'bg-amber-50' : 'bg-green-50'}`}>
           <p className="text-sm">
