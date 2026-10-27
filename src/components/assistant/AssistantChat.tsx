@@ -177,12 +177,12 @@ function CaseActions({ token, initial, showCallback }: { token: string; initial:
     )
   }
   return (
-    <div className="flex flex-col gap-2.5 sm:flex-row sm:pl-9">
+    <div className="flex flex-wrap gap-2 pl-9">
       <button
         type="button"
         disabled={busy}
         onClick={() => act('resolve')}
-        className="min-h-12 rounded-2xl bg-green-600 px-5 py-3 text-base font-semibold text-white shadow-sm active:bg-green-700 disabled:opacity-60"
+        className="min-h-10 rounded-full bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm active:bg-green-700 disabled:opacity-60"
       >
         ✓ Mon problème est résolu
       </button>
@@ -190,7 +190,7 @@ function CaseActions({ token, initial, showCallback }: { token: string; initial:
         type="button"
         disabled={busy}
         onClick={() => act('callback')}
-        className="min-h-12 rounded-2xl border-2 border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
+        className="min-h-10 rounded-full border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 active:bg-gray-50 disabled:opacity-60"
       >
         Être rappelé
       </button>}
@@ -198,7 +198,30 @@ function CaseActions({ token, initial, showCallback }: { token: string; initial:
   )
 }
 
+/**
+ * Lien personnel SAV : signale à l'équipe que le client est sur sa page (à l'ouverture, puis toutes les 30 s
+ * tant que la page est visible). Rien n'est envoyé quand l'onglet est en arrière-plan ou l'écran verrouillé.
+ */
+function usePresencePing(token: string | undefined) {
+  useEffect(() => {
+    if (!token) return
+    const ping = () => {
+      if (document.visibilityState !== 'visible') return
+      fetch(`/api/s/${encodeURIComponent(token)}/ping`, { method: 'POST', keepalive: true }).catch(() => {})
+    }
+    ping()
+    const timer = setInterval(ping, 30_000)
+    const onVisible = () => { if (document.visibilityState === 'visible') ping() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [token])
+}
+
 export default function AssistantChat({ assistant, tiles = [], initialQuestion, caseMode }: AssistantChatProps) {
+  usePresencePing(caseMode?.token)
   const router = useRouter()
   const {
     messages, isTyping, mascotState, hydrated,

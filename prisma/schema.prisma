@@ -380,6 +380,10 @@ model SavCase {
   tokenExpiresAt   DateTime
   chatSessionToken String?
   chatOpenedAt     DateTime?
+  /// Première ouverture du lien personnel (page affichée dans un navigateur, pas un simple clic d'antivirus)
+  linkOpenedAt     DateTime?
+  /// Dernier signal de la page du client (envoyé toutes les 30 s tant qu'elle est ouverte et visible)
+  lastSeenAt       DateTime?
   // Email au client
   emailTemplate    String?
   emailSubject     String?

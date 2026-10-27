@@ -3,8 +3,8 @@ import type { SavCategory, SavStatus } from '@prisma/client'
 
 export const STATUS_LABELS: Record<SavStatus, string> = {
   NEW: 'À traiter',
-  WAITING: 'En attente du client',
-  IN_CHAT: 'En cours avec Kingso',
+  WAITING: 'Email envoyé',
+  IN_CHAT: 'Avec Kingso',
   TO_CALL: 'À rappeler',
   TO_SCHEDULE: 'À planifier',
   SCHEDULED: 'Planifié',
@@ -44,7 +44,8 @@ export const SAV_TABS: { key: string; label: string; statuses: SavStatus[] }[] =
   { key: 'a-traiter', label: 'À traiter', statuses: ['NEW'] },
   { key: 'a-rappeler', label: 'À rappeler', statuses: ['TO_CALL'] },
   { key: 'a-planifier', label: 'À planifier', statuses: ['TO_SCHEDULE'] },
-  { key: 'kingso', label: 'Avec Kingso', statuses: ['WAITING', 'IN_CHAT'] },
+  { key: 'email-envoye', label: 'Email envoyé', statuses: ['WAITING'] },
+  { key: 'kingso', label: 'Avec Kingso', statuses: ['IN_CHAT'] },
   { key: 'planifies', label: 'Planifiés', statuses: ['SCHEDULED'] },
   { key: 'resolus', label: 'Résolus', statuses: ['RESOLVED'] },
   { key: 'clos', label: 'Clos', statuses: ['CLOSED'] },

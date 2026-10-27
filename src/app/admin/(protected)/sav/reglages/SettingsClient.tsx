@@ -272,6 +272,7 @@ export default function SettingsClient({ settings, templates, assistants, client
         {num('officeEndHour', '… et jusqu\'à', 'h')}
         {num('noClickHoursUrgent', 'Sans clic sur le lien, à rappeler après (sans chauffage)', 'h')}
         {num('noClickHours', 'Sans clic sur le lien, à rappeler après (autres cas)', 'h')}
+        {num('chatAwayMinutes', 'Client parti de Kingso sans conclure : à rappeler après', 'min')}
       </Card>
 
       <Card title="Chat proposé selon le produit">

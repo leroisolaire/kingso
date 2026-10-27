@@ -31,7 +31,7 @@ Nous avons bien reçu votre message du {{date}} concernant {{probleme}}.
 
 {{explication}}
 
-Kingso, l'assistant de Le Roi Solaire, connaît votre installation et vous guide pas à pas pour résoudre ce problème :
+Kingso, l'assistant de Le Roi Solaire, peut vous guider pas à pas pour résoudre ce problème :
 {{lien}}
 
 {{signature}}`,

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
+import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
 import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
@@ -62,6 +63,7 @@ interface Props {
   templates: { key: string; name: string; autoSend: boolean }[]
   assistants: { id: string; name: string }[]
   suggestions: ClientOption[]
+  kingso: { tone: Presence['tone']; label: string; detail: string } | null
 }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
@@ -132,7 +134,7 @@ function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOp
   )
 }
 
-export default function CaseView({ data, link, paused, templates, assistants, suggestions }: Props) {
+export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -198,6 +200,15 @@ export default function CaseView({ data, link, paused, templates, assistants, su
         <span className="text-sm text-gray-400">{SOURCE_LABELS[data.source]} · reçu le {data.receivedAt}</span>
       </div>
       {data.urgent && data.urgentReason && <p className="text-sm text-red-700">Urgent : {data.urgentReason}</p>}
+      {kingso && (
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-4 py-2.5 text-sm ring-1 ${PRESENCE_STYLES[kingso.tone].cls}`}>
+          <span className="inline-flex items-center gap-2 font-semibold">
+            <span className={`h-2.5 w-2.5 rounded-full ${PRESENCE_STYLES[kingso.tone].dot}`} />
+            {kingso.label}
+          </span>
+          <span className="text-xs opacity-80">{kingso.detail}</span>
+        </div>
+      )}
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
       {info && <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">{info}</p>}

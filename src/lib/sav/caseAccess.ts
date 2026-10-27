@@ -17,23 +17,53 @@ export async function getCaseByToken(token: string | null | undefined) {
 export function caseContextText(c: { number: number; equipment: string | null; clientQuestion: string | null; summary: string; errorCode: string | null }): string {
   return [
     `Dossier SAV n° ${c.number}.`,
-    c.equipment ? `Équipement du client : ${c.equipment}.` : 'Équipement : non précisé (demande-le si nécessaire).',
+    // Le fichier client liste les ouvrages posés (souvent sans marque ni modèle exact) : jamais une certitude
+    c.equipment
+      ? `Ouvrages notés dans notre fichier client (indicatif, souvent sans marque ni modèle exact, parfois incomplet) : ${c.equipment}. Ne dis jamais au client que tu connais son installation. Si la marque ou le modèle exact te manque pour répondre, demande-les-lui comme d'habitude (règle MODÈLE INCONNU).`
+      : 'Équipement : non précisé (demande la marque et le modèle si nécessaire, règle MODÈLE INCONNU).',
     `Problème signalé : ${c.clientQuestion ?? c.summary}`,
     c.errorCode ? `Code affiché : ${c.errorCode}.` : '',
   ].filter(Boolean).join('\n')
 }
 
-/** Premier message du client dans son chat personnel : dossier « en cours avec Kingso ». */
+/** Statuts d'où l'ouverture du lien fait passer le dossier « Avec Kingso ». Un dossier à rappeler, planifié ou
+ *  résolu ne bouge pas (le client a pu demander à être rappelé et rester sur la page) : seule sa pastille change. */
+const TO_IN_CHAT = ['NEW', 'WAITING'] as const
+
+/**
+ * Signal de la page du client (à l'ouverture, puis toutes les 30 s tant qu'elle est ouverte et visible).
+ * Envoyé par le navigateur lui-même : un antivirus de messagerie qui « clique » le lien ne le déclenche pas.
+ */
+export async function recordPresence(caseId: string) {
+  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { status: true, linkOpenedAt: true } })
+  if (!c) return
+  const now = new Date()
+  const toChat = (TO_IN_CHAT as readonly string[]).includes(c.status)
+  await db.savCase.update({
+    where: { id: caseId },
+    data: { lastSeenAt: now, ...(c.linkOpenedAt ? {} : { linkOpenedAt: now }), ...(toChat ? { status: 'IN_CHAT' as const } : {}) },
+  })
+  if (!c.linkOpenedAt) await addSavEvent(caseId, 'LINK_OPENED', 'Page du chat affichée chez le client')
+}
+
+/** Premier message du client dans son chat personnel : conversation rattachée au dossier. */
 export async function markCaseChatStarted(caseId: string, sessionToken: string) {
-  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { chatSessionToken: true, status: true } })
-  if (!c || c.chatSessionToken) return
+  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { chatSessionToken: true, status: true, linkOpenedAt: true } })
+  if (!c) return
+  const now = new Date()
+  if (c.chatSessionToken) {
+    await db.savCase.update({ where: { id: caseId }, data: { lastSeenAt: now } })
+    return
+  }
   await db.savCase.update({
     where: { id: caseId },
     data: {
       chatSessionToken: sessionToken,
-      chatOpenedAt: new Date(),
-      ...(c.status === 'NEW' || c.status === 'WAITING' ? { status: 'IN_CHAT' as const } : {}),
+      chatOpenedAt: now,
+      lastSeenAt: now,
+      ...(c.linkOpenedAt ? {} : { linkOpenedAt: now }),
+      ...((TO_IN_CHAT as readonly string[]).includes(c.status) ? { status: 'IN_CHAT' as const } : {}),
     },
   })
-  await addSavEvent(caseId, 'CHAT_STARTED', 'Le client a ouvert son lien et échange avec Kingso')
+  await addSavEvent(caseId, 'CHAT_STARTED', 'Premier message du client à Kingso')
 }

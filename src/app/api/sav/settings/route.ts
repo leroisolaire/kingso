@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth/dal'
 import { parseDriveLink } from '@/lib/drive/google'
 import { updateSavSettings, type SavSettings } from '@/lib/sav/settings'
 
-const NUMBERS = ['sendDelayMinutes', 'noClickHoursUrgent', 'noClickHours', 'selfHelpLastHour', 'officeStartHour', 'officeEndHour'] as const
+const NUMBERS = ['sendDelayMinutes', 'noClickHoursUrgent', 'noClickHours', 'chatAwayMinutes', 'selfHelpLastHour', 'officeStartHour', 'officeEndHour'] as const
 const TEXTS = ['senderEmail', 'senderName', 'signature'] as const
 
 /** Réglages de l'espace SAV (pause des envois, délais, expéditeur…). */

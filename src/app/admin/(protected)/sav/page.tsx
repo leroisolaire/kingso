@@ -9,7 +9,9 @@ import { formatPhone } from '@/lib/sav/phone'
 import { formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
 import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS } from '@/lib/sav/status'
+import { kingsoPresence, PRESENCE_STYLES } from '@/lib/sav/presence'
 import { refreshSavTimers } from '@/lib/sav/timers'
+import AutoRefresh from './AutoRefresh'
 import NewCaseForm from './NewCaseForm'
 import StatusSelect from './StatusSelect'
 
@@ -53,8 +55,24 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
   ])
   const countFor = (statuses: string[]) => counts.filter((c) => statuses.includes(c.status)).reduce((n, c) => n + c._count, 0)
 
+  // Échanges avec Kingso : nombre de messages par conversation, et dossiers résolus par le client lui-même
+  const tokens = cases.map((c) => c.chatSessionToken).filter((t): t is string => Boolean(t))
+  const [messageCounts, resolvedEvents] = await Promise.all([
+    tokens.length ? db.history.groupBy({ by: ['sessionToken'], where: { sessionToken: { in: tokens } }, _count: true }) : Promise.resolve([]),
+    db.savEvent.findMany({ where: { caseId: { in: cases.map((c) => c.id) }, kind: 'RESOLVED_BY_CLIENT' }, select: { caseId: true } }),
+  ])
+  const presenceOf = new Map(cases.map((c) => [c.id, kingsoPresence({
+    lastSeenAt: c.lastSeenAt,
+    linkOpenedAt: c.linkOpenedAt,
+    messages: messageCounts.find((m) => m.sessionToken === c.chatSessionToken)?._count ?? 0,
+    resolvedByClient: c.status === 'RESOLVED' && resolvedEvents.some((e) => e.caseId === c.id),
+  })]))
+  // Clients en ligne en tête de liste
+  const sorted = [...cases].sort((a, b) => Number(presenceOf.get(b.id)?.tone === 'online') - Number(presenceOf.get(a.id)?.tone === 'online'))
+
   return (
     <div className="mx-auto max-w-6xl space-y-5">
+      <AutoRefresh />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Espace SAV</h1>
@@ -99,11 +117,12 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
         <p className="py-10 text-center text-sm text-gray-400">Aucun dossier ici.</p>
       ) : (
         <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
-          {cases.map((c) => {
+          {sorted.map((c) => {
             const mail = emailState(c)
+            const presence = presenceOf.get(c.id)
             return (
               <li key={c.id} className="flex flex-col hover:bg-gray-50 sm:flex-row sm:items-start">
-                <Link href={`/admin/sav/${c.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 pt-3 sm:flex-row sm:items-start sm:gap-4 sm:pb-3">
+                <Link href={`/admin/sav/${c.id}?depuis=${tab.key}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 pt-3 sm:flex-row sm:items-start sm:gap-4 sm:pb-3">
                   <div className="w-28 shrink-0 text-xs text-gray-400">
                     <span className="font-semibold text-gray-700">n° {c.number}</span>
                     <br />
@@ -121,6 +140,12 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                       <span className={`rounded-md px-2 py-0.5 font-semibold ring-1 ${CATEGORY_COLORS[c.category]}`}>{CATEGORY_LABELS[c.category]}</span>
                       {!c.clientId && c.source !== 'CHAT' && (
                         <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-900 ring-1 ring-yellow-400">Client non identifié</span>
+                      )}
+                      {presence && (
+                        <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 font-medium ring-1 ${PRESENCE_STYLES[presence.tone].cls}`}>
+                          <span className={`h-2 w-2 rounded-full ${PRESENCE_STYLES[presence.tone].dot}`} />
+                          {presence.label}
+                        </span>
                       )}
                       {c.urgent && c.urgentReason && <span className="font-medium text-red-700">⚠ {c.urgentReason}</span>}
                     </div>

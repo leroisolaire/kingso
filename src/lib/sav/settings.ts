@@ -12,6 +12,8 @@ export interface SavSettings {
   /** Sans clic sur le lien : passage « À rappeler » après ce délai (heures) */
   noClickHoursUrgent: number // pas de chauffage / pas d'eau chaude
   noClickHours: number
+  /** Client parti de son chat sans « résolu » ni « être rappelé » : « À rappeler » après ce délai (minutes) */
+  chatAwayMinutes: number
   /** Heure limite d'envoi des emails « Kingso peut aider » (le client peut se dépanner le soir) */
   selfHelpLastHour: number
   /** Autres emails : heures de bureau, du lundi au vendredi */
@@ -31,6 +33,7 @@ export const DEFAULT_SAV_SETTINGS: SavSettings = {
   sendDelayMinutes: 30,
   noClickHoursUrgent: 4,
   noClickHours: 24,
+  chatAwayMinutes: 30,
   selfHelpLastHour: 21,
   officeStartHour: 8,
   officeEndHour: 18,
