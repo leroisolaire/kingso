@@ -141,8 +141,17 @@ export async function askAssistant(params: {
   images: ImageInput[]
   context: string
   history: ConversationMessage[]
+  /** Dossier SAV du client (chat ouvert depuis son lien personnel) */
+  caseContext?: string
 }): Promise<{ content: string; offerEscalation: boolean; unanswered: boolean }> {
-  const { config, userMessage, images, context, history } = params
+  const { config, userMessage, images, context, history, caseContext } = params
+  const system = caseContext
+    ? `${buildAssistantSystemPrompt(config)}
+
+DOSSIER DU CLIENT (il a laissé un message au SAV et a ouvert le lien personnel envoyé par email) :
+${caseContext}
+Tu connais déjà ces informations : ne redemande pas la marque ni le modèle quand ils sont indiqués, et commence directement par la solution. Ne cite jamais son adresse, son téléphone ni son email. S'il veut être rappelé, dis-lui qu'il peut utiliser le bouton « Être rappelé » sous la conversation.`
+    : buildAssistantSystemPrompt(config)
 
   const contextText = context.trim()
     ? `Contexte documentaire :\n\n${context}`
@@ -151,7 +160,7 @@ export async function askAssistant(params: {
   const message = await anthropic.messages.create({
     model: MODEL,
     max_tokens: 4000,
-    system: buildAssistantSystemPrompt(config),
+    system,
     messages: [
       ...history,
       {

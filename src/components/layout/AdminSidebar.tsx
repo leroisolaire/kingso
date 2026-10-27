@@ -7,6 +7,7 @@ import { logout } from '@/lib/auth/actions'
 
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
+  { href: '/admin/sav', label: 'Espace SAV', icon: '☎' },
   { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },

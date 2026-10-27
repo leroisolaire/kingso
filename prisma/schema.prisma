@@ -254,6 +254,7 @@ model Assistant {
   updatedAt          DateTime          @updatedAt
   histories          History[]
   escalations        Escalation[]
+  savCases           SavCase[]
 }
 
 // Demande transmise au SAV depuis un chat
@@ -308,4 +309,152 @@ model WebPage {
   source    WebSource                    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   crawledAt DateTime                     @default(now())
   updatedAt DateTime                     @updatedAt
+}
+
+// ─── Espace SAV ─────────────────────────────────────────────────────────────
+// Dossier SAV : une demande client (message du répondeur, demande depuis le chat, saisie manuelle),
+// suivie jusqu'à sa résolution par Kingso ou par l'équipe.
+
+enum SavSource {
+  VOICEMAIL // message du répondeur (email Connectel)
+  CHAT // formulaire « Transmettre au SAV » d'un chat
+  MANUAL // créé dans le back-office
+}
+
+enum SavStatus {
+  NEW // à traiter : email à valider
+  WAITING // email envoyé ou programmé : en attente du client
+  IN_CHAT // le client a ouvert son lien et échange avec Kingso
+  TO_CALL // à rappeler par le SAV
+  TO_SCHEDULE // intervention à planifier
+  SCHEDULED // rendez-vous fixé
+  RESOLVED // résolu (par Kingso ou au téléphone)
+  CLOSED // clos sans suite
+}
+
+enum SavCategory {
+  SELF_HELP // Kingso peut aider le client à se dépanner
+  INTERVENTION // fuite, électricité, pièce HS : intervention nécessaire
+  ADMIN // entretien, contrat, administratif
+  OTHER_PRODUCT // autre produit (solaire, chauffe-eau, clim…)
+  UNCLEAR // message trop vague
+}
+
+model SavCase {
+  id               String       @id @default(cuid())
+  number           Int          @unique @default(autoincrement())
+  source           SavSource
+  status           SavStatus    @default(NEW)
+  category         SavCategory  @default(UNCLEAR)
+  urgent           Boolean      @default(false)
+  urgentReason     String?
+  // Client (tel que compris dans le message, complété par le fichier client)
+  phoneKey         String? // numéro normalisé (+33…) : regroupe les messages d'un même client
+  callbackPhone    String?
+  customerName     String?
+  email            String?
+  address          String?
+  postalCode       String?
+  city             String?
+  clientId         String?
+  client           SavClient?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientMatch      String? // comment le client a été identifié (ou pourquoi il ne l'a pas été)
+  // Problème
+  product          String? // PAC, CLIM, CET, PV, BATTERIE, AUTRE
+  equipment        String? // ex. « PAC air-eau Hitachi Yutaki S Combi »
+  summary          String       @default("")
+  clientQuestion   String? // le problème dit par le client (1re personne) : démarre le chat personnel
+  emailProblem     String? // pour l'email : « concernant l'erreur 83 sur votre pompe à chaleur »
+  errorCode        String?
+  noHeating        Boolean      @default(false) // pas de chauffage ni d'eau chaude : délais raccourcis
+  // Chat personnel (lien envoyé au client)
+  assistantId      String?
+  assistant        Assistant?   @relation(fields: [assistantId], references: [id], onDelete: SetNull)
+  accessToken      String       @unique
+  tokenExpiresAt   DateTime
+  chatSessionToken String?
+  chatOpenedAt     DateTime?
+  // Email au client
+  emailTemplate    String?
+  emailSubject     String?
+  emailBody        String?
+  emailScheduledAt DateTime?
+  emailSentAt      DateTime?
+  emailMessageId   String?
+  emailError       String?
+  // Planning
+  planningEventId  String?
+  planningDate     DateTime?
+  appointmentAt    DateTime?
+  receivedAt       DateTime     @default(now())
+  resolvedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  messages         SavMessage[]
+  events           SavEvent[]
+
+  @@index([status])
+  @@index([phoneKey])
+}
+
+// Message reçu (transcription du répondeur, demande du chat…)
+model SavMessage {
+  id          String    @id @default(cuid())
+  caseId      String
+  case        SavCase   @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  source      SavSource
+  externalId  String?   @unique // identifiant de l'email d'origine : jamais traité deux fois
+  callerPhone String?
+  durationSec Int?
+  text        String
+  receivedAt  DateTime
+  createdAt   DateTime  @default(now())
+}
+
+// Historique du dossier (réception, email, chat, appels, notes…)
+model SavEvent {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      SavCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  kind      String
+  detail    String?
+  author    String? // utilisateur du back-office, ou null pour Kingso
+  createdAt DateTime @default(now())
+
+  @@index([caseId, createdAt])
+}
+
+// Modèles d'email au client, par cas (modifiables dans le back-office)
+model SavEmailTemplate {
+  key       String   @id // SELF_HELP, FOLLOW_UP, INTERVENTION, ADMIN, OTHER_PRODUCT
+  name      String
+  subject   String
+  body      String
+  autoSend  Boolean  @default(false) // false = validation par l'équipe avant envoi
+  updatedAt DateTime @updatedAt
+}
+
+// Fichier client (export Extrabat) : jamais accessible aux chats
+model SavClient {
+  id         String    @id @default(cuid())
+  externalId String    @unique // identifiant client Extrabat
+  name       String
+  phones     String[] // normalisés (+33…)
+  email      String?
+  address    String?
+  postalCode String?
+  city       String?
+  equipment  String? // résumé lisible des équipements installés
+  contract   String? // contrat d'entretien
+  importedAt DateTime  @default(now())
+  cases      SavCase[]
+
+  @@index([phones], type: Gin)
+}
+
+// Réglages généraux (clé → valeur JSON)
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }

@@ -6,7 +6,7 @@ import { db } from '@/lib/db/client'
 export const dynamic = 'force-dynamic'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [user, driveAlerts, videosToReview] = await Promise.all([
+  const [user, driveAlerts, videosToReview, savToHandle] = await Promise.all([
     getCurrentUser(),
     // Documents Drive mis de côté (confidentiels ou classement en échec) : à valider
     db.document.count({
@@ -14,11 +14,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     }),
     // Vidéos utiles repérées par Kingso, en attente de validation
     db.videoItem.count({ where: { status: 'TO_REVIEW' } }),
+    // Dossiers SAV à traiter : emails à valider et clients à rappeler
+    db.savCase.count({ where: { status: { in: ['NEW', 'TO_CALL'] } } }),
   ])
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <AdminSidebar user={user} badges={{ '/admin/drive': driveAlerts, '/admin/videos': videosToReview }} />
+      <AdminSidebar user={user} badges={{ '/admin/drive': driveAlerts, '/admin/videos': videosToReview, '/admin/sav': savToHandle }} />
       {/* Texte sombre par défaut : le body est en blanc pour le front public (fond sombre) */}
       <div className="flex flex-1 flex-col overflow-hidden text-gray-900">
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
