@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db/client'
+import { suggestClients } from '@/lib/sav/clients'
 import { caseLink } from '@/lib/sav/draft'
 import { EVENT_LABELS } from '@/lib/sav/events'
 import { formatPhone } from '@/lib/sav/phone'
@@ -27,13 +28,14 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
   })
   if (!c) notFound()
 
-  const [conversation, templates, assistants, settings] = await Promise.all([
+  const [conversation, templates, assistants, settings, suggestions] = await Promise.all([
     c.chatSessionToken
       ? db.history.findMany({ where: { sessionToken: c.chatSessionToken }, orderBy: { createdAt: 'asc' }, take: 100 })
       : Promise.resolve([]),
     getTemplates(),
     db.assistant.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     getSavSettings(),
+    c.clientId ? Promise.resolve([]) : suggestClients(c).catch(() => []),
   ])
 
   return (
@@ -44,6 +46,7 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
         link={caseLink(c.accessToken)}
         templates={templates.map((t) => ({ key: t.key, name: t.name, autoSend: t.autoSend }))}
         assistants={assistants}
+        suggestions={suggestions.map((s) => ({ ...s, phones: s.phones.map(formatPhone) }))}
         data={{
           id: c.id,
           number: c.number,

@@ -3,6 +3,7 @@ import type { SavStatus } from '@prisma/client'
 import { getSession } from '@/lib/auth/dal'
 import { db } from '@/lib/db/client'
 import { currentAuthor } from '@/lib/sav/author'
+import { linkClient } from '@/lib/sav/clientSync'
 import { addSavEvent } from '@/lib/sav/events'
 import { prepareEmail } from '@/lib/sav/ingest'
 import { formatParisDate } from '@/lib/sav/schedule'
@@ -72,6 +73,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         await db.savCase.update({ where: { id }, data: { urgent: Boolean(body.urgent) } })
         await addSavEvent(id, 'EDITED', body.urgent ? 'Marqué urgent' : 'Urgence retirée', author)
         break
+      case 'link_client': {
+        const client = typeof body.clientId === 'string' ? await db.savClient.findUnique({ where: { id: body.clientId } }) : null
+        if (!client) throw new Error('Client introuvable dans le fichier.')
+        await linkClient(id, client, 'Choisi par l\'équipe parmi les clients possibles', author)
+        break
+      }
       case 'note':
         if (!note) throw new Error('Note vide.')
         await addSavEvent(id, 'NOTE', note, author)

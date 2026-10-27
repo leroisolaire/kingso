@@ -1,5 +1,5 @@
 import 'server-only'
-import type { Prisma } from '@prisma/client'
+import type { Prisma, SavClient } from '@prisma/client'
 import { db } from '@/lib/db/client'
 import { downloadSpreadsheet, isSpreadsheet, listChildren } from '@/lib/drive/google'
 import { importClientsFromXlsx, type ImportResult } from './clientImport'
@@ -74,29 +74,43 @@ export async function rematchOpenCases(): Promise<number> {
   let found = 0
   for (const c of cases) {
     const { client, match } = await findClient([c.phoneKey, c.callbackPhone], c.city)
-    if (!client) continue
-    found++
-    await db.savCase.update({
-      where: { id: c.id },
-      data: {
-        clientId: client.id,
-        clientMatch: match,
-        customerName: client.name,
-        email: c.email ?? client.email,
-        address: client.address ?? c.address,
-        postalCode: client.postalCode ?? c.postalCode,
-        city: client.city ?? c.city,
-        equipment: c.equipment ?? client.equipment,
-      },
-    })
-    await addSavEvent(c.id, 'CLIENT_FOUND', `${match} (fichier client mis à jour)`)
-    // Email pas encore parti : refait avec la bonne formule de politesse ; « Kingso peut aider » repasse à valider
-    if (c.emailTemplate && !c.emailSentAt && (c.email ?? client.email)) {
-      await prepareEmail(c.id, c.emailTemplate as TemplateKey)
-      if (c.emailTemplate === 'SELF_HELP' && c.status === 'TO_CALL') {
-        await db.savCase.update({ where: { id: c.id }, data: { status: 'NEW' } })
-      }
+    if (!client) {
+      if (match !== c.clientMatch) await db.savCase.update({ where: { id: c.id }, data: { clientMatch: match } })
+      continue
     }
+    found++
+    await linkClient(c.id, client, `${match} (fichier client mis à jour)`)
   }
   return found
+}
+
+/**
+ * Rattache un client du fichier à un dossier (trouvé automatiquement, ou choisi par l'équipe parmi les clients possibles).
+ * L'email pas encore parti est refait avec la bonne formule de politesse ; « Kingso peut aider » repasse à valider.
+ */
+export async function linkClient(caseId: string, client: SavClient, match: string, author?: string | null) {
+  const c = await db.savCase.findUniqueOrThrow({ where: { id: caseId } })
+  // Choix manuel : les coordonnées du fichier remplacent celles transcrites du répondeur
+  const manual = Boolean(author)
+  const email = manual ? (client.email ?? c.email) : (c.email ?? client.email)
+  await db.savCase.update({
+    where: { id: caseId },
+    data: {
+      clientId: client.id,
+      clientMatch: match,
+      customerName: client.name,
+      email,
+      address: client.address ?? c.address,
+      postalCode: client.postalCode ?? c.postalCode,
+      city: client.city ?? c.city,
+      equipment: c.equipment ?? client.equipment,
+    },
+  })
+  await addSavEvent(caseId, 'CLIENT_FOUND', match, author)
+  if (c.emailTemplate && !c.emailSentAt && email) {
+    await prepareEmail(caseId, c.emailTemplate as TemplateKey, author)
+    if (c.emailTemplate === 'SELF_HELP' && c.status === 'TO_CALL') {
+      await db.savCase.update({ where: { id: caseId }, data: { status: 'NEW' } })
+    }
+  }
 }

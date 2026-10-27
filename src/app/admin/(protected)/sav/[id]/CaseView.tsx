@@ -43,12 +43,25 @@ interface CaseData {
   conversation: { id: string; user: string; kingso: string; at: string }[]
 }
 
+interface ClientOption {
+  id: string
+  name: string
+  email: string | null
+  phones: string[]
+  address: string | null
+  postalCode: string | null
+  city: string | null
+  equipment: string | null
+  reasons: string[]
+}
+
 interface Props {
   data: CaseData
   link: string
   paused: boolean
   templates: { key: string; name: string; autoSend: boolean }[]
   assistants: { id: string; name: string }[]
+  suggestions: ClientOption[]
 }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
@@ -67,7 +80,59 @@ function Card({ title, children, action }: { title: string; children: React.Reac
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500'
 
-export default function CaseView({ data, link, paused, templates, assistants }: Props) {
+function ClientRow({ c, onPick, disabled }: { c: ClientOption; onPick: () => void; disabled: boolean }) {
+  return (
+    <li className="space-y-1 rounded-lg border border-gray-200 p-2.5 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium text-gray-900">{c.name}</p>
+        <Button type="button" size="sm" variant="secondary" onClick={onPick} disabled={disabled}>C&apos;est lui</Button>
+      </div>
+      <p className="text-xs text-gray-600">{[c.address, c.postalCode, c.city].filter(Boolean).join(', ') || '—'}</p>
+      <p className="text-xs text-gray-600">{c.phones.join(' · ') || 'pas de téléphone'} · {c.email ?? <span className="text-orange-700">pas d&apos;email</span>}</p>
+      {c.equipment && <p className="text-xs text-gray-400">{c.equipment}</p>}
+      {c.reasons.length > 0 && <p className="text-xs text-amber-700">{c.reasons.join(', ')}</p>}
+    </li>
+  )
+}
+
+/** Numéro absent du fichier client : clients possibles (nom et commune approchés) et recherche manuelle. */
+function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOption[]; onPick: (id: string) => void; disabled: boolean }) {
+  const [q, setQ] = useState('')
+  const [results, setResults] = useState<ClientOption[] | null>(null)
+  const [searching, setSearching] = useState(false)
+
+  const search = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSearching(true)
+    const res = await fetch(`/api/sav/clients?q=${encodeURIComponent(q)}`)
+    const json = await res.json().catch(() => ({}))
+    setResults(json.clients ?? [])
+    setSearching(false)
+  }
+
+  return (
+    <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Clients possibles</p>
+      {suggestions.length > 0 ? (
+        <>
+          <p className="text-xs text-gray-500">Le nom et la commune viennent du répondeur et peuvent être mal transcrits : vérifiez avant de choisir.</p>
+          <ul className="space-y-2">{suggestions.map((c) => <ClientRow key={c.id} c={c} onPick={() => onPick(c.id)} disabled={disabled} />)}</ul>
+        </>
+      ) : (
+        <p className="text-xs text-gray-500">Aucun client proche trouvé dans le fichier.</p>
+      )}
+      <form onSubmit={search} className="flex gap-2 pt-1">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Chercher : nom, commune, n° de téléphone" className={inputCls} />
+        <Button type="submit" size="sm" variant="secondary" loading={searching} disabled={q.trim().length < 2}>Chercher</Button>
+      </form>
+      {results && (results.length === 0
+        ? <p className="text-xs text-gray-500">Aucun résultat.</p>
+        : <ul className="space-y-2">{results.map((c) => <ClientRow key={c.id} c={c} onPick={() => onPick(c.id)} disabled={disabled} />)}</ul>)}
+    </div>
+  )
+}
+
+export default function CaseView({ data, link, paused, templates, assistants, suggestions }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -338,6 +403,9 @@ export default function CaseView({ data, link, paused, templates, assistants }: 
                   {data.clientIdentified ? '✓ Identifié' : 'Non identifié'}{data.clientMatch ? ` — ${data.clientMatch}` : ''}
                 </p>
               </dl>
+            )}
+            {!data.clientIdentified && !editing && (
+              <ClientPicker suggestions={suggestions} onPick={(clientId) => action('link_client', { clientId })} disabled={busy !== null} />
             )}
           </Card>
 
