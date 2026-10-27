@@ -34,8 +34,8 @@ interface StoredState {
 // page en ouvrant l'appareil photo. Effacée au bout de 7 jours d'inactivité.
 const MAX_AGE_MS = 7 * 24 * 3600 * 1000
 
-function storageKey(slug: string) {
-  return `kingso_chat_${slug}`
+function storageKey(key: string) {
+  return `kingso_chat_${key}`
 }
 
 function loadState(slug: string): StoredState | null {
@@ -72,7 +72,10 @@ function newSessionToken() {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-export function useAssistantChat(slug: string) {
+/** `caseToken` : chat personnel d'un dossier SAV (conversation séparée, rattachée au dossier). */
+export function useAssistantChat(slug: string, caseToken?: string) {
+  // Clé de sauvegarde locale : une conversation par chat, et une par dossier SAV
+  const storeKey = caseToken ? `${slug}_dossier_${caseToken.slice(0, 12)}` : slug
   const [messages, setMessages] = useState<AssistantMessage[]>([])
   const [isTyping, setIsTyping] = useState(false)
   const [mascotState, setMascotState] = useState<MascotState>('wave')
@@ -89,7 +92,7 @@ export function useAssistantChat(slug: string) {
   // Restauration après rechargement : sessionStorage n'existe que côté navigateur,
   // la lecture doit donc se faire après le rendu serveur.
   useEffect(() => {
-    const stored = loadState(slug)
+    const stored = loadState(storeKey)
     sessionToken.current = stored?.sessionToken ?? newSessionToken()
     if (stored) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -99,13 +102,13 @@ export function useAssistantChat(slug: string) {
       if (stored.messages.length > 0) setMascotState('idle')
     }
     setHydrated(true)
-  }, [slug])
+  }, [storeKey])
 
   useEffect(() => {
     messagesRef.current = messages
     if (!hydrated) return
-    saveState(slug, { sessionToken: sessionToken.current, messages, escalationOffered, escalationSent })
-  }, [slug, messages, escalationOffered, escalationSent, hydrated])
+    saveState(storeKey, { sessionToken: sessionToken.current, messages, escalationOffered, escalationSent })
+  }, [storeKey, messages, escalationOffered, escalationSent, hydrated])
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
@@ -155,6 +158,7 @@ export function useAssistantChat(slug: string) {
           sessionToken: sessionToken.current,
           history,
           images: images.map(({ mediaType, data }) => ({ mediaType, data })),
+          ...(caseToken ? { caseToken } : {}),
         }),
       })
       const data = await response.json().catch(() => ({}))
@@ -210,7 +214,7 @@ export function useAssistantChat(slug: string) {
     } finally {
       setIsTyping(false)
     }
-  }, [slug])
+  }, [slug, caseToken])
 
   const submitEscalation = useCallback(async (form: {
     firstName: string; lastName: string; phone: string; postalCode: string; email: string

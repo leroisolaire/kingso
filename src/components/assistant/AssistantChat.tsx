@@ -150,15 +150,58 @@ interface AssistantChatProps {
   tiles?: HomeTile[]
   /** Question transmise par la page d'accueil (?q=) : envoyée automatiquement à l'ouverture */
   initialQuestion?: string
+  /** Chat personnel ouvert depuis le lien d'un dossier SAV */
+  caseMode?: { token: string; resolved: boolean }
 }
 
-export default function AssistantChat({ assistant, tiles = [], initialQuestion }: AssistantChatProps) {
+/** Boutons du chat personnel : « Mon problème est résolu » / « Être rappelé ». */
+function CaseActions({ token, initial }: { token: string; initial: 'open' | 'resolved' }) {
+  const [state, setState] = useState<'open' | 'resolved' | 'callback'>(initial)
+  const [busy, setBusy] = useState(false)
+  const act = async (action: 'resolve' | 'callback') => {
+    setBusy(true)
+    const ok = await fetch(`/api/s/${encodeURIComponent(token)}/${action}`, { method: 'POST' }).then((r) => r.ok).catch(() => false)
+    setBusy(false)
+    if (ok) setState(action === 'resolve' ? 'resolved' : 'callback')
+  }
+  if (state !== 'open') {
+    return (
+      <KingsoBubble>
+        {state === 'resolved'
+          ? 'Parfait, je suis ravi que ce soit réglé ! Votre demande est close. Si le problème revient, vous pouvez rouvrir ce lien à tout moment.'
+          : "C'est noté : notre équipe SAV va vous rappeler. Elle aura le résumé de notre échange, inutile de tout réexpliquer."}
+      </KingsoBubble>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2.5 sm:flex-row sm:pl-9">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => act('resolve')}
+        className="min-h-12 rounded-2xl bg-green-600 px-5 py-3 text-base font-semibold text-white shadow-sm active:bg-green-700 disabled:opacity-60"
+      >
+        ✓ Mon problème est résolu
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => act('callback')}
+        className="min-h-12 rounded-2xl border-2 border-gray-200 bg-white px-5 py-3 text-base font-semibold text-gray-700 active:bg-gray-50 disabled:opacity-60"
+      >
+        Être rappelé
+      </button>
+    </div>
+  )
+}
+
+export default function AssistantChat({ assistant, tiles = [], initialQuestion, caseMode }: AssistantChatProps) {
   const router = useRouter()
   const {
     messages, isTyping, mascotState, hydrated,
     escalationOffered, escalationSent, limitReached, canRetry,
     sendMessage, retryFailed, rateMessage, submitEscalation, handleInteraction, resetConversation,
-  } = useAssistantChat(assistant.slug)
+  } = useAssistantChat(assistant.slug, caseMode?.token)
   // La carte SAV s'ouvre quand Kingso la propose ; le client peut la fermer puis la rouvrir
   const [dismissedOfferId, setDismissedOfferId] = useState<string | null>(null)
   const [cardOpenedManually, setCardOpenedManually] = useState(false)
@@ -172,9 +215,11 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion }
   useEffect(() => {
     if (!hydrated || !initialQuestion || initialSent.current) return
     initialSent.current = true
+    // Chat personnel déjà commencé (lien rouvert) : on reprend la conversation telle quelle
+    if (caseMode && messages.length > 0) return
     window.history.replaceState(null, '', window.location.pathname)
     sendMessage(initialQuestion)
-  }, [hydrated, initialQuestion, sendMessage])
+  }, [hydrated, initialQuestion, sendMessage, caseMode, messages.length])
 
   const latestOfferId = [...messages].reverse().find((m) => m.offerEscalation)?.id ?? null
   const cardVisible = cardOpenedManually || (latestOfferId !== null && latestOfferId !== dismissedOfferId)
@@ -255,7 +300,7 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion }
               <span className="lg:hidden">{assistant.name} · </span>{STATE_LABEL[mascotState]}
             </p>
           </div>
-          {messages.length > 0 && (
+          {messages.length > 0 && !caseMode && (
             <button
               type="button"
               onClick={() => {
@@ -377,6 +422,10 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion }
             )}
 
             {(isTyping || routing) && <TypingBubble />}
+
+            {caseMode && hydrated && !isTyping && messages.some((m) => m.role === 'ASSISTANT' && !m.isError) && (
+              <CaseActions token={caseMode.token} initial={caseMode.resolved ? 'resolved' : 'open'} />
+            )}
 
             {assistant.escalationEnabled && (cardVisible || escalationSent) && (
               <div className="sm:pl-9">

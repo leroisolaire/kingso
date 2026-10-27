@@ -4,6 +4,7 @@ import { downloadAttachments } from '@/lib/storage/attachments'
 import { sendEmail, escapeHtml } from '@/lib/email/brevo'
 import { getClientIp, hashIp } from '@/lib/visitor'
 import { db } from '@/lib/db/client'
+import { caseFromChatEscalation } from '@/lib/sav/ingest'
 
 export const maxDuration = 30
 
@@ -69,6 +70,17 @@ export async function POST(request: NextRequest, { params }: Params) {
     const escalation = await db.escalation.create({
       data: { ...data, assistantId: assistant.id, ipHash },
     })
+
+    // Dossier dans l'espace SAV (« À rappeler »), avec la conversation rattachée
+    await caseFromChatEscalation({
+      assistantId: assistant.id,
+      sessionToken: data.sessionToken,
+      name: `${data.firstName} ${data.lastName}`,
+      phone: data.phone,
+      postalCode: data.postalCode,
+      email: data.email,
+      userMessages: entries.map((e) => e.userMessage),
+    }).catch((e) => console.error('[escalate] dossier SAV', e instanceof Error ? e.message : e))
 
     // Email au SAV — en cas d'échec la demande reste visible dans le back-office
     try {

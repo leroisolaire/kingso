@@ -254,3 +254,17 @@ export async function setPublicLink(fileId: string, enabled: boolean): Promise<v
     for (const p of anyone) await driveFetch(`/files/${fileId}/permissions/${p.id}`, {}, { method: 'DELETE' })
   }
 }
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/** Fichier Excel (.xlsx), ou feuille Google Sheets exportée au format Excel. */
+export async function downloadSpreadsheet(file: DriveFile): Promise<Buffer> {
+  const res = file.mimeType === 'application/vnd.google-apps.spreadsheet'
+    ? await driveFetch(`/files/${file.id}/export`, { mimeType: XLSX_MIME })
+    : await driveFetch(`/files/${file.id}`, { alt: 'media' })
+  return Buffer.from(await res.arrayBuffer())
+}
+
+export function isSpreadsheet(file: DriveFile): boolean {
+  return file.mimeType === XLSX_MIME || file.mimeType === 'application/vnd.google-apps.spreadsheet' || /\.xlsx$/i.test(file.name)
+}

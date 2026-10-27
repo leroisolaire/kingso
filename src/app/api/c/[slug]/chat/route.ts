@@ -4,7 +4,8 @@ import type { ConversationMessage } from '@/lib/ai/kingso'
 import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
 import { suggestVideo } from '@/lib/rag/videoSuggest'
 import type { Document } from '@/types/document'
-import { expandCategoryIds, getHomeTiles } from '@/lib/db/queries/assistants'
+import { expandCategoryIds, findAssistantBySlug, getHomeTiles } from '@/lib/db/queries/assistants'
+import { caseContextText, getCaseByToken, markCaseChatStarted } from '@/lib/sav/caseAccess'
 import { resolveAssistant } from '@/lib/assistants/resolve'
 import { saveAttachments } from '@/lib/storage/attachments'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -61,13 +62,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     )
   }
 
-  const resolved = await resolveAssistant(slug)
+  const body = await request.json().catch(() => ({}))
+  // Chat personnel ouvert depuis le lien envoyé par email (dossier SAV)
+  const savCase = typeof body.caseToken === 'string' ? await getCaseByToken(body.caseToken) : null
+
+  let resolved = await resolveAssistant(slug)
+  if (resolved.kind !== 'ok' && savCase?.assistant?.slug === slug) {
+    // Le lien personnel donne accès au chat du dossier même s'il n'est pas public
+    const { assistant } = await findAssistantBySlug(slug)
+    if (assistant) resolved = { kind: 'ok', assistant, isPreview: false }
+  }
   if (resolved.kind === 'locked') return NextResponse.json({ error: 'Accès protégé.' }, { status: 401 })
   if (resolved.kind !== 'ok') return NextResponse.json({ error: 'Chat introuvable.' }, { status: 404 })
   const { assistant, isPreview } = resolved
 
   try {
-    const body = await request.json()
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 2000) : ''
     const sessionToken = typeof body.sessionToken === 'string' && body.sessionToken
       ? body.sessionToken.slice(0, 100)
@@ -102,8 +111,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Début de la dernière réponse de Kingso : le sujet en cours (ex. « il faut nettoyer le filtre à eau »),
     // pour que « c'est fait, comment je remonte ? » retrouve les bons documents
     const lastAnswer = history.findLast((m) => m.role === 'assistant')?.content.slice(0, 300) ?? ''
-    const searchQuery = [...userMessages.slice(-4), lastAnswer, message, imageDescription].filter(Boolean).join(' ').slice(-1500)
-    const codeText = [...userMessages, message, imageDescription].filter(Boolean).join(' ')
+    // Chat personnel : l'équipement et le problème du dossier guident aussi la recherche
+    const caseHint = savCase ? [savCase.equipment, savCase.errorCode ? `code ${savCase.errorCode}` : ''].filter(Boolean).join(' ') : ''
+    const searchQuery = [caseHint, ...userMessages.slice(-4), lastAnswer, message, imageDescription].filter(Boolean).join(' ').slice(-1500)
+    const codeText = [savCase?.clientQuestion ?? '', ...userMessages, message, imageDescription].filter(Boolean).join(' ')
 
     const docScope = {
       types: (assistant.audience === 'CUSTOMER' ? ['PUBLIC'] : ['PUBLIC', 'INTERNAL', 'FRANCHISE']) as Document['type'][],
@@ -130,6 +141,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       images,
       context,
       history,
+      caseContext: savCase ? caseContextText(savCase) : undefined,
     })
 
     // Procédure donnée sans vidéo : on cherche une vidéo de démonstration de cette opération
@@ -157,6 +169,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         unanswered: response.unanswered,
       },
     })
+
+    if (savCase) await markCaseChatStarted(savCase.id, sessionToken)
 
     // Titre de la conversation pour l'historique, mis à jour après la réponse (ne ralentit pas le chat)
     after(() => refreshConversationSummary(sessionToken))
