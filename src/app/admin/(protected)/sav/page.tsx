@@ -1,14 +1,17 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { after } from 'next/server'
+import { getCurrentUser } from '@/lib/auth/dal'
+import { savTabsFor } from '@/lib/auth/permissions'
 import { db } from '@/lib/db/client'
 import { checkMailboxIfStale } from '@/lib/sav/gmail'
 import { formatPhone } from '@/lib/sav/phone'
 import { formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
-import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
+import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS } from '@/lib/sav/status'
 import { refreshSavTimers } from '@/lib/sav/timers'
 import NewCaseForm from './NewCaseForm'
+import StatusSelect from './StatusSelect'
 
 export const metadata: Metadata = { title: 'Espace SAV | Admin' }
 
@@ -28,7 +31,13 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
   // Nouveaux messages du répondeur dans la boîte kingso@ (s'ils n'ont pas déjà été relevés par la notification Gmail)
   after(() => checkMailboxIfStale().catch(() => null))
   const { onglet } = await searchParams
-  const tab = SAV_TABS.find((t) => t.key === onglet) ?? SAV_TABS[0]
+  const user = await getCurrentUser()
+  const isSuperAdmin = user.roles.includes('SUPER_ADMIN')
+  // Le Planning ne voit que les interventions à planifier et planifiées
+  const allowedTabs = savTabsFor(user.roles)
+  const tabs = allowedTabs ? SAV_TABS.filter((t) => allowedTabs.includes(t.key)) : SAV_TABS
+  const canHandleCalls = !allowedTabs
+  const tab = tabs.find((t) => t.key === onglet) ?? tabs[0]
   const done = tab.statuses.some((s) => s === 'RESOLVED' || s === 'CLOSED')
 
   const [counts, cases, settings] = await Promise.all([
@@ -53,22 +62,24 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
             Messages du répondeur et demandes des chats : Kingso les lit, les trie, prépare l&apos;email au client et propose de le dépanner.
           </p>
         </div>
-        <Link href="/admin/sav/reglages" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-          Réglages et modèles d&apos;email
-        </Link>
+        {isSuperAdmin && (
+          <Link href="/admin/sav/reglages" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            Réglages et modèles d&apos;email
+          </Link>
+        )}
       </div>
 
-      {settings.paused && (
+      {settings.paused && canHandleCalls && (
         <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Les envois d&apos;emails sont <strong>en pause</strong> : les dossiers sont créés et les emails préparés, mais rien ne part.{' '}
-          <Link href="/admin/sav/reglages" className="underline">Activer les envois</Link>
+          Les envois d&apos;emails sont <strong>en pause</strong> : les dossiers sont créés et les emails préparés, mais rien ne part.
+          {isSuperAdmin && <>{' '}<Link href="/admin/sav/reglages" className="underline">Activer les envois</Link></>}
         </p>
       )}
 
-      <NewCaseForm />
+      {canHandleCalls && <NewCaseForm />}
 
       <nav className="flex gap-1 overflow-x-auto border-b border-gray-200">
-        {SAV_TABS.map((t) => {
+        {tabs.map((t) => {
           const n = countFor(t.statuses)
           const active = t.key === tab.key
           return (
@@ -91,8 +102,8 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
           {cases.map((c) => {
             const mail = emailState(c)
             return (
-              <li key={c.id}>
-                <Link href={`/admin/sav/${c.id}`} className="flex flex-col gap-1.5 px-4 py-3 hover:bg-gray-50 sm:flex-row sm:items-start sm:gap-4">
+              <li key={c.id} className="flex flex-col hover:bg-gray-50 sm:flex-row sm:items-start">
+                <Link href={`/admin/sav/${c.id}`} className="flex min-w-0 flex-1 flex-col gap-1.5 px-4 pt-3 sm:flex-row sm:items-start sm:gap-4 sm:pb-3">
                   <div className="w-28 shrink-0 text-xs text-gray-400">
                     <span className="font-semibold text-gray-700">n° {c.number}</span>
                     <br />
@@ -114,11 +125,12 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                       {c.urgent && c.urgentReason && <span className="font-medium text-red-700">⚠ {c.urgentReason}</span>}
                     </div>
                   </div>
-                  <div className="flex shrink-0 flex-row gap-3 text-xs sm:flex-col sm:items-end sm:gap-1">
-                    <span className={`rounded-full px-2 py-0.5 ${STATUS_COLORS[c.status]}`}>{STATUS_LABELS[c.status]}</span>
-                    {mail.label && <span className={mail.cls}>{mail.label}</span>}
-                  </div>
                 </Link>
+                {/* En dehors du lien : changer le statut sans ouvrir le dossier */}
+                <div className="flex shrink-0 flex-row items-center gap-3 px-4 pb-3 pt-1.5 text-xs sm:flex-col sm:items-end sm:gap-1 sm:pl-0 sm:pt-3">
+                  <StatusSelect caseId={c.id} status={c.status} />
+                  {mail.label && <span className={mail.cls}>{mail.label}</span>}
+                </div>
               </li>
             )
           })}

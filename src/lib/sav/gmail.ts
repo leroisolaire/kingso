@@ -1,6 +1,7 @@
 import 'server-only'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
+import { isOAuthConfigured, oauthTokenRequest } from '@/lib/auth/googleOAuth'
 import { db } from '@/lib/db/client'
 import { CONNECTEL_SENDER, isConnectelVoicemail, parseVoicemail } from './connectel'
 import { ingestMessage } from './ingest'
@@ -57,9 +58,7 @@ async function saveState(patch: Partial<GmailState>): Promise<GmailState> {
   return next
 }
 
-export function isOAuthConfigured() {
-  return Boolean(process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)
-}
+export { isOAuthConfigured }
 
 // ── Connexion (OAuth) ──
 export function authUrl(redirectUri: string, state: string): string {
@@ -76,21 +75,6 @@ export function authUrl(redirectUri: string, state: string): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
-async function tokenRequest(body: Record<string, string>) {
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID ?? '',
-      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '',
-      ...body,
-    }),
-  })
-  const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(`Google : ${json.error_description ?? json.error ?? res.status}`)
-  return json as { access_token: string; refresh_token?: string; scope?: string }
-}
-
 async function gmailFetch<T>(accessToken: string, path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
     ...init,
@@ -103,7 +87,7 @@ async function gmailFetch<T>(accessToken: string, path: string, init?: RequestIn
 
 /** Fin de la connexion : vérifie qu'il s'agit bien de la boîte kingso@, puis garde le jeton (chiffré). */
 export async function completeConnection(code: string, redirectUri: string, author: string | null) {
-  const tokens = await tokenRequest({ code, redirect_uri: redirectUri, grant_type: 'authorization_code' })
+  const tokens = await oauthTokenRequest({ code, redirect_uri: redirectUri, grant_type: 'authorization_code' })
   if (!tokens.refresh_token) throw new Error('Google n\'a pas fourni d\'accès durable : recommencez la connexion.')
   const profile = await gmailFetch<{ emailAddress: string }>(tokens.access_token, '/profile')
   const email = profile.emailAddress.toLowerCase()
@@ -127,7 +111,7 @@ export async function disconnect() {
 async function accessToken(): Promise<string | null> {
   const state = await getGmailState()
   if (!state.token || !isOAuthConfigured()) return null
-  const tokens = await tokenRequest({ refresh_token: unseal(state.token), grant_type: 'refresh_token' })
+  const tokens = await oauthTokenRequest({ refresh_token: unseal(state.token), grant_type: 'refresh_token' })
   return tokens.access_token
 }
 

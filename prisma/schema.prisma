@@ -27,9 +27,11 @@ enum DocumentReview {
   IGNORED // écarté par l'équipe
 }
 
-enum Role {
-  ADMIN
+// Rôles du back-office (cumulables) : Super admin = tout ; SAV = espace SAV ; Planning = interventions à planifier
+enum UserRole {
   SUPER_ADMIN
+  SAV
+  PLANNING
 }
 
 // Public visé par un chat : un chat CLIENT ne lit jamais que les documents PUBLIC
@@ -277,13 +279,17 @@ model Escalation {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      Role     @default(ADMIN)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String     @id @default(cuid())
+  email          String     @unique
+  password       String? // connexion de secours ; les collaborateurs se connectent avec Google
+  name           String?
+  roles          UserRole[] @default([])
+  active         Boolean    @default(true)
+  /// Augmenté à chaque changement de rôles ou désactivation : les sessions ouvertes sont alors refusées
+  sessionVersion Int        @default(0)
+  lastLoginAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 }
 
 model WebSource {

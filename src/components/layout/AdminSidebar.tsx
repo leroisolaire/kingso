@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/lib/auth/actions'
+import { canAccess, ROLE_LABELS, type UserRole } from '@/lib/auth/permissions'
 
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
@@ -18,10 +19,11 @@ const navItems = [
   { href: '/admin/history', label: 'Historique', icon: '⊙' },
   { href: '/admin/quality', label: 'À améliorer', icon: '✎' },
   { href: '/admin/escalations', label: 'Demandes SAV', icon: '✉' },
+  { href: '/admin/utilisateurs', label: 'Utilisateurs', icon: '⚇' },
 ]
 
 interface AdminSidebarProps {
-  user: { email: string; name: string | null } | null
+  user: { email: string; name: string | null; roles: UserRole[] } | null
   /** Pastilles d'alerte par lien (ex. documents Drive à valider) */
   badges?: Record<string, number>
 }
@@ -41,7 +43,7 @@ export default function AdminSidebar({ user, badges = {} }: AdminSidebarProps) {
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
-          {navItems.map((item) => {
+          {navItems.filter((item) => canAccess(user?.roles ?? [], item.href)).map((item) => {
             const isActive =
               item.href === '/admin'
                 ? pathname === '/admin'
@@ -78,6 +80,7 @@ export default function AdminSidebar({ user, badges = {} }: AdminSidebarProps) {
           <div className="flex-1 leading-tight">
             <p className="text-sm font-medium text-white">{user?.name ?? 'Admin'}</p>
             <p className="text-xs text-slate-400">{user?.email}</p>
+            {user && <p className="text-xs text-slate-500">{user.roles.map((r) => ROLE_LABELS[r]).join(' · ')}</p>}
           </div>
         </div>
         <form action={logout} className="mt-3">

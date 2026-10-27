@@ -17,10 +17,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     // Dossiers SAV à traiter : emails à valider et clients à rappeler
     db.savCase.count({ where: { status: { in: ['NEW', 'TO_CALL'] } } }),
   ])
+  // Le Planning ne voit que les interventions : sa pastille compte celles à planifier
+  const planningOnly = !user.roles.includes('SUPER_ADMIN') && !user.roles.includes('SAV')
+  const savBadge = planningOnly ? await db.savCase.count({ where: { status: 'TO_SCHEDULE' } }) : savToHandle
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <AdminSidebar user={user} badges={{ '/admin/drive': driveAlerts, '/admin/videos': videosToReview, '/admin/sav': savToHandle }} />
+      <AdminSidebar user={user} badges={{ '/admin/drive': driveAlerts, '/admin/videos': videosToReview, '/admin/sav': savBadge }} />
       {/* Texte sombre par défaut : le body est en blanc pour le front public (fond sombre) */}
       <div className="flex flex-1 flex-col overflow-hidden text-gray-900">
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
