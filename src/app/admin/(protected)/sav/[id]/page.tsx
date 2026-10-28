@@ -3,10 +3,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db/client'
 import { suggestClients } from '@/lib/sav/clients'
+import { defaultDuration, isCalendarConnected, planningEventLink } from '@/lib/sav/calendar'
 import { caseLink } from '@/lib/sav/draft'
 import { EVENT_LABELS } from '@/lib/sav/events'
 import { formatPhone } from '@/lib/sav/phone'
-import { formatParisDate } from '@/lib/sav/schedule'
+import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
 import { SAV_TABS } from '@/lib/sav/status'
 import { getTemplates } from '@/lib/sav/templates'
@@ -30,14 +31,15 @@ function BackToList({ href, label }: { href: string; label: string }) {
 
 export default async function SavCasePage({ params, searchParams }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ depuis?: string }>
+  searchParams: Promise<{ depuis?: string; q?: string }>
 }) {
   const { id } = await params
-  const { depuis } = await searchParams
-  // Retour à l'onglet d'où l'on vient (sinon la liste par défaut)
+  const { depuis, q } = await searchParams
+  // Retour à la recherche ou à l'onglet d'où l'on vient (sinon la liste par défaut)
   const fromTab = SAV_TABS.find((t) => t.key === depuis)
-  const backHref = fromTab ? `/admin/sav?onglet=${fromTab.key}` : '/admin/sav'
-  const backLabel = fromTab ? `Retour aux demandes « ${fromTab.label} »` : 'Retour à toutes les demandes'
+  const query = q?.trim().slice(0, 100)
+  const backHref = query ? `/admin/sav?q=${encodeURIComponent(query)}` : fromTab ? `/admin/sav?onglet=${fromTab.key}` : '/admin/sav'
+  const backLabel = query ? `Retour à la recherche « ${query} »` : fromTab ? `Retour aux demandes « ${fromTab.label} »` : 'Retour à toutes les demandes'
   await refreshSavTimers().catch(() => 0)
   const c = await db.savCase.findUnique({
     where: { id },
@@ -50,7 +52,7 @@ export default async function SavCasePage({ params, searchParams }: {
   })
   if (!c) notFound()
 
-  const [conversation, templates, assistants, settings, suggestions] = await Promise.all([
+  const [conversation, templates, assistants, settings, suggestions, calendarConnected, defaultMinutes] = await Promise.all([
     c.chatSessionToken
       ? db.history.findMany({ where: { sessionToken: c.chatSessionToken }, orderBy: { createdAt: 'asc' }, take: 100 })
       : Promise.resolve([]),
@@ -58,6 +60,8 @@ export default async function SavCasePage({ params, searchParams }: {
     db.assistant.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     getSavSettings(),
     c.clientId ? Promise.resolve([]) : suggestClients(c).catch(() => []),
+    isCalendarConnected().catch(() => false),
+    defaultDuration().catch(() => 120),
   ])
 
   // Échange avec Kingso : présence en direct et résumé (lien ouvert, messages, départ)
@@ -87,6 +91,7 @@ export default async function SavCasePage({ params, searchParams }: {
         templates={templates.map((t) => ({ key: t.key, name: t.name, autoSend: t.autoSend }))}
         assistants={assistants}
         kingso={kingso}
+        calendarConnected={calendarConnected}
         suggestions={suggestions.map((s) => ({ ...s, phones: s.phones.map(formatPhone) }))}
         data={{
           id: c.id,
@@ -119,7 +124,10 @@ export default async function SavCasePage({ params, searchParams }: {
           emailSentAt: c.emailSentAt ? formatParisDate(c.emailSentAt, true) : null,
           emailInFuture: Boolean(c.emailSentAt && c.emailSentAt > new Date()),
           emailError: c.emailError,
-          appointmentAt: c.appointmentAt ? formatParisDate(c.appointmentAt, true) : null,
+          appointmentAt: c.appointmentAt ? formatAppointment(c.appointmentAt, c.appointmentMinutes ?? defaultMinutes) : null,
+          appointmentMinutes: c.appointmentMinutes ?? defaultMinutes,
+          appointmentIso: c.appointmentAt?.toISOString() ?? null,
+          planningLink: planningEventLink(c.planningEventId),
           messages: c.messages.map((m) => ({
             id: m.id, source: m.source, text: m.text, at: formatParisDate(m.receivedAt, true),
             phone: formatPhone(m.callerPhone), durationSec: m.durationSec,

@@ -1,5 +1,6 @@
 // Heure d'envoi des emails au client (heure de Paris).
 import type { SavSettings } from './settings'
+import { durationLabel } from './duration'
 
 const TZ = 'Europe/Paris'
 
@@ -64,6 +65,14 @@ export function effectiveSendTime(planned: Date | null, selfHelp: boolean, s: Sa
   const soon = new Date(Date.now() + randomMinutes(1, 3) * 60_000)
   const base = planned && planned > soon ? planned : soon
   return nextAllowed(base, selfHelp, s)
+}
+
+/** Rendez-vous d'intervention, bien lisible : « mardi 4 novembre, 14:00 – 16:00 (2 h) » (ou « … à 14:00 » sans durée). */
+export function formatAppointment(date: Date, minutes?: number | null): string {
+  const day = date.toLocaleDateString('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
+  const time = (d: Date) => d.toLocaleTimeString('fr-FR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })
+  if (!minutes) return `${day} à ${time(date)}`
+  return `${day}, ${time(date)} – ${time(new Date(date.getTime() + minutes * 60_000))} (${durationLabel(minutes)})`
 }
 
 export function formatParisDate(date: Date, withTime = false): string {

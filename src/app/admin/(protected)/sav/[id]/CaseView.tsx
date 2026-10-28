@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
 import DictationButton from './DictationButton'
+import DurationSelect from '../DurationSelect'
 import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
@@ -40,6 +41,9 @@ interface CaseData {
   emailInFuture: boolean
   emailError: string | null
   appointmentAt: string | null
+  appointmentIso: string | null
+  appointmentMinutes: number
+  planningLink: string | null
   messages: { id: string; source: string; text: string; at: string; phone: string; durationSec: number | null }[]
   events: { id: string; label: string; kind: string; detail: string | null; author: string | null; at: string }[]
   conversation: { id: string; user: string; kingso: string; at: string }[]
@@ -65,6 +69,7 @@ interface Props {
   assistants: { id: string; name: string }[]
   suggestions: ClientOption[]
   kingso: { tone: Presence['tone']; label: string; detail: string } | null
+  calendarConnected: boolean
 }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
@@ -79,6 +84,13 @@ function Card({ title, children, action }: { title: string; children: React.Reac
       {children}
     </section>
   )
+}
+
+/** Date ISO → valeur d'un champ datetime-local (heure du navigateur). */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500'
@@ -135,7 +147,7 @@ function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOp
   )
 }
 
-export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso }: Props) {
+export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -147,9 +159,18 @@ export default function CaseView({ data, link, paused, templates, assistants, su
   })
   const [subject, setSubject] = useState(data.emailSubject)
   const [body, setBody] = useState(data.emailBody)
+  // Email (re)préparé côté serveur (modèle choisi, catégorie changée, client relié) : on affiche la nouvelle version
+  const [loadedEmail, setLoadedEmail] = useState({ subject: data.emailSubject, body: data.emailBody })
+  if (loadedEmail.subject !== data.emailSubject || loadedEmail.body !== data.emailBody) {
+    setLoadedEmail({ subject: data.emailSubject, body: data.emailBody })
+    setSubject(data.emailSubject)
+    setBody(data.emailBody)
+  }
   const [note, setNote] = useState('')
   const [callNote, setCallNote] = useState('')
   const [appointment, setAppointment] = useState('')
+  const [reschedule, setReschedule] = useState(false)
+  const [minutes, setMinutes] = useState(data.appointmentMinutes)
 
   const call = async (key: string, url: string, payload: unknown, method = 'POST') => {
     setBusy(key)
@@ -162,6 +183,8 @@ export default function CaseView({ data, link, paused, templates, assistants, su
       setError(json.error ?? `Erreur ${res.status}`)
       return null
     }
+    // Action faite, mais l'agenda du planning n'a pas suivi
+    if (json.warning) setError(json.warning)
     router.refresh()
     return json
   }
@@ -172,7 +195,12 @@ export default function CaseView({ data, link, paused, templates, assistants, su
   const sendEmail = async () => {
     if (emailDirty && !(await patch('save-email', { emailSubject: subject, emailBody: body }))) return
     const res = await action('send', {})
-    if (res?.scheduledAt) setInfo(`Email confié à l'envoi : il partira le ${new Date(res.scheduledAt).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`)
+    if (res?.scheduledAt) {
+      const at = new Date(res.scheduledAt)
+      setInfo(at.getTime() - Date.now() > 2 * 60_000
+        ? `Email confié à l'envoi : il partira le ${at.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`
+        : `Email envoyé à ${data.email}.`)
+    }
   }
   const open = !['RESOLVED', 'CLOSED'].includes(data.status)
   const canCall = ['NEW', 'WAITING', 'IN_CHAT', 'TO_CALL'].includes(data.status)
@@ -344,19 +372,50 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                   </div>
                 </div>
               )}
-              {data.status === 'TO_SCHEDULE' && (
+              {(data.status === 'TO_SCHEDULE' || (data.status === 'SCHEDULED' && (!data.appointmentAt || reschedule))) && (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-600">Intervention à planifier{data.city ? ` à ${data.city}` : ''}.</p>
-                  <input type="datetime-local" value={appointment} onChange={(e) => setAppointment(e.target.value)} className={inputCls} />
-                  <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString() })} disabled={!appointment || busy !== null}>
+                  <p className="text-sm text-gray-600">
+                    {data.status === 'TO_SCHEDULE'
+                      ? `Intervention à planifier${data.city ? ` à ${data.city}` : ''}.`
+                      : data.appointmentAt ? 'Nouvelle date du rendez-vous :' : 'Planifié sans date : saisissez la date du rendez-vous.'}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input type="datetime-local" value={appointment} onChange={(e) => setAppointment(e.target.value)} className={`${inputCls} w-auto flex-1`} />
+                    <label className="flex items-center gap-2 text-sm text-gray-600">
+                      Durée
+                      <DurationSelect value={minutes} onChange={setMinutes} className="py-2" />
+                    </label>
+                  </div>
+                  <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString(), durationMinutes: minutes }).then((r) => r && setReschedule(false))} disabled={!appointment || busy !== null}>
                     Fixer le rendez-vous
                   </Button>
+                  {reschedule && <Button type="button" size="sm" variant="ghost" onClick={() => setReschedule(false)}>Annuler</Button>}
                 </div>
               )}
-              {data.status === 'SCHEDULED' && (
+              {data.status === 'SCHEDULED' && data.appointmentAt && !reschedule && (
                 <div className="space-y-2">
-                  <p className="text-sm text-gray-700">Rendez-vous le <strong>{data.appointmentAt}</strong></p>
-                  <Button type="button" size="sm" onClick={() => action('status', { status: 'RESOLVED' })} disabled={busy !== null}>Intervention faite : résolu</Button>
+                  <p className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-base font-semibold text-sky-900 ring-1 ring-sky-300">
+                    <span aria-hidden="true">📅</span> Intervention {data.appointmentAt}
+                  </p>
+                  {data.planningLink ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="font-semibold text-green-700">✓ Ajouté au planning</span>
+                      <a href={data.planningLink} target="_blank" rel="noreferrer" className="text-sky-700 hover:underline">Voir dans l&apos;agenda ↗</a>
+                      <button type="button" onClick={() => confirm('Retirer ce rendez-vous de l\'agenda ?') && action('calendar_remove', {})} disabled={busy !== null} className="text-xs text-gray-500 hover:underline">
+                        Retirer du planning
+                      </button>
+                    </div>
+                  ) : calendarConnected ? (
+                    <Button type="button" onClick={() => action('calendar_add', {})} loading={busy === 'calendar_add'} disabled={busy !== null}>
+                      📅 Ajouter au planning
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-gray-500">Pour ajouter ce rendez-vous à l&apos;agenda, connectez l&apos;agenda du planning dans Réglages SAV.</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" size="sm" onClick={() => action('status', { status: 'RESOLVED' })} disabled={busy !== null}>Intervention faite : résolu</Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => { setAppointment(toLocalInput(data.appointmentIso)); setMinutes(data.appointmentMinutes); setReschedule(true) }}>Changer la date ou la durée</Button>
+                  </div>
                 </div>
               )}
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">

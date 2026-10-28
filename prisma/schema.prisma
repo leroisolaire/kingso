@@ -396,6 +396,7 @@ model SavCase {
   planningEventId  String?
   planningDate     DateTime?
   appointmentAt    DateTime?
+  appointmentMinutes Int? // durée de l'intervention (sinon la durée par défaut des réglages)
   receivedAt       DateTime     @default(now())
   resolvedAt       DateTime?
   createdAt        DateTime     @default(now())

@@ -8,10 +8,11 @@ import { getSavSettings } from './settings'
 import { emailHtml } from './templates'
 
 /**
- * Envoie l'email du dossier au client, depuis sav@ (copie cachée à sav@). Brevo l'envoie à l'heure
+ * Envoie l'email du dossier au client, depuis sav@ (copie cachée à sav@).
+ * Clic « Valider et envoyer » (`now`) : part tout de suite. Envoi direct automatique : Brevo l'envoie à l'heure
  * prévue (≈ 30 min après l'appel, dans les plages autorisées) ou tout de suite si elle est passée.
  */
-export async function sendCaseEmail(caseId: string, author?: string | null): Promise<Date> {
+export async function sendCaseEmail(caseId: string, author?: string | null, options: { now?: boolean } = {}): Promise<Date> {
   const settings = await getSavSettings()
   if (settings.paused) throw new Error('Les envois sont en pause (réglages SAV).')
   if (!isEmailConfigured()) throw new Error('Brevo n\'est pas configuré.')
@@ -22,7 +23,7 @@ export async function sendCaseEmail(caseId: string, author?: string | null): Pro
   if (c.emailSentAt) throw new Error('Cet email est déjà envoyé ou programmé.')
 
   const selfHelp = c.emailTemplate === 'SELF_HELP'
-  const when = effectiveSendTime(c.emailScheduledAt, selfHelp, settings)
+  const when = options.now ? new Date() : effectiveSendTime(c.emailScheduledAt, selfHelp, settings)
   const scheduled = when.getTime() - Date.now() > 2 * 60_000
   const link = caseLink(c.accessToken)
 

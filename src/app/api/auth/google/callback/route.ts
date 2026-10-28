@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth/dal'
 import { CALLBACK_PATH, completeLogin, LOGIN_STATE_COOKIE } from '@/lib/auth/googleOAuth'
 import { SESSION_COOKIE } from '@/lib/auth/session'
 import { currentAuthor } from '@/lib/sav/author'
+import { CALENDAR_STATE_COOKIE, completeCalendarConnection } from '@/lib/sav/calendar'
 import { completeConnection } from '@/lib/sav/gmail'
 
 // Retour de Google, pour les deux usages de l'identifiant OAuth (une seule adresse de retour à déclarer) :
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(new URL(path, request.url))
     response.cookies.delete({ name: LOGIN_STATE_COOKIE, path: '/api/auth/google' })
     response.cookies.delete({ name: GMAIL_STATE_COOKIE, path: '/api/auth/google' })
+    response.cookies.delete({ name: CALENDAR_STATE_COOKIE, path: '/api/auth/google' })
     return response
   }
   const message = (error: unknown) => encodeURIComponent(error instanceof Error ? error.message : String(error))
@@ -37,6 +39,22 @@ export async function GET(request: NextRequest) {
       return response
     } catch (error) {
       return go(`/admin/login?erreur=${message(error)}`)
+    }
+  }
+
+  // ── Autorisation de l'agenda du planning (depuis les réglages SAV, par un administrateur connecté) ──
+  const calendarState = request.cookies.get(CALENDAR_STATE_COOKIE)?.value
+  if (state && calendarState && state === calendarState) {
+    const backToSettings = (text: string) => go(`/admin/sav/reglages?agenda=${encodeURIComponent(text)}#agenda`)
+    if (!(await getSession())) return go('/admin/login')
+    if (params.get('error')) return backToSettings(`Autorisation refusée (${params.get('error')})`)
+    const code = params.get('code')
+    if (!code) return backToSettings('Réponse de Google incomplète')
+    try {
+      await completeCalendarConnection(code, redirectUri, await currentAuthor())
+      return backToSettings('ok')
+    } catch (error) {
+      return backToSettings(error instanceof Error ? error.message : String(error))
     }
   }
 

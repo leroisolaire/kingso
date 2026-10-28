@@ -31,6 +31,7 @@ const RULES: Rule[] = [
   { prefix: '/api/sav/settings', roles: [] },
   { prefix: '/api/sav/templates', roles: [] },
   { prefix: '/api/sav/gmail', roles: [] },
+  { prefix: '/api/sav/calendar', roles: [] },
   { prefix: '/api/sav/clients', roles: ['SAV', 'PLANNING'], methods: ['GET'] },
   { prefix: '/api/sav/clients', roles: [] },
   { prefix: '/admin/sav', roles: ['SAV', 'PLANNING'] },

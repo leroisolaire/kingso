@@ -32,6 +32,9 @@ export const EVENT_LABELS: Record<string, string> = {
   CALL_UNREACHABLE: 'Client injoignable',
   SCHEDULED: 'Rendez-vous fixé',
   PLANNING_ADDED: 'Ajouté au planning',
+  PLANNING_UPDATED: 'Planning mis à jour',
+  PLANNING_REMOVED: 'Retiré du planning',
+  PLANNING_ERROR: 'Erreur de planning',
   NOTE: 'Note',
   EDITED: 'Dossier modifié',
 }

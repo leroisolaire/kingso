@@ -1,7 +1,7 @@
 import 'server-only'
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import type { Prisma } from '@prisma/client'
 import { isOAuthConfigured, oauthTokenRequest } from '@/lib/auth/googleOAuth'
+import { seal as sealWith, unseal as unsealWith } from '@/lib/auth/sealed'
 import { db } from '@/lib/db/client'
 import { CONNECTEL_SENDER, isConnectelVoicemail, parseVoicemail } from './connectel'
 import { ingestMessage } from './ingest'
@@ -33,19 +33,8 @@ export interface GmailState {
 }
 
 // ── Chiffrement du jeton (clé dérivée de SESSION_SECRET) ──
-const key = () => createHash('sha256').update(`gmail:${process.env.SESSION_SECRET ?? ''}`).digest()
-function seal(text: string): string {
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', key(), iv)
-  const data = Buffer.concat([cipher.update(text, 'utf8'), cipher.final()])
-  return [iv, cipher.getAuthTag(), data].map((b) => b.toString('base64url')).join('.')
-}
-function unseal(sealed: string): string {
-  const [iv, tag, data] = sealed.split('.').map((s) => Buffer.from(s, 'base64url'))
-  const decipher = createDecipheriv('aes-256-gcm', key(), iv)
-  decipher.setAuthTag(tag)
-  return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8')
-}
+const seal = (text: string) => sealWith('gmail', text)
+const unseal = (sealed: string) => unsealWith('gmail', sealed)
 
 export async function getGmailState(): Promise<GmailState> {
   const row = await db.appSetting.findUnique({ where: { key: STATE_KEY } })
