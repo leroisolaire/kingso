@@ -65,7 +65,6 @@ export type TechOutcome = keyof typeof TECH_OUTCOMES
 
 /** Couleurs des techniciens sur le planning (dans l'ordre de la liste des techniciens). */
 export const TECH_COLORS = [
-  { block: 'bg-sky-100 border-sky-500 text-sky-950', dot: 'bg-sky-500' },
   { block: 'bg-emerald-100 border-emerald-500 text-emerald-950', dot: 'bg-emerald-500' },
   { block: 'bg-violet-100 border-violet-500 text-violet-950', dot: 'bg-violet-500' },
   { block: 'bg-pink-100 border-pink-500 text-pink-950', dot: 'bg-pink-500' },
@@ -74,4 +73,5 @@ export const TECH_COLORS = [
   { block: 'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950', dot: 'bg-fuchsia-500' },
   { block: 'bg-yellow-100 border-yellow-500 text-yellow-950', dot: 'bg-yellow-500' },
 ]
-export const NO_TECH_COLOR = { block: 'bg-gray-100 border-gray-400 text-gray-900', dot: 'bg-gray-400' }
+// Rendez-vous SAV sans technicien : bleu franc, bien distinct des autres événements de l'agenda (gris)
+export const NO_TECH_COLOR = { block: 'bg-blue-600 border-blue-900 text-white', dot: 'bg-blue-600' }

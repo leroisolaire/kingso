@@ -3,7 +3,7 @@ import type { SavStatus } from '@prisma/client'
 import { getSession } from '@/lib/auth/dal'
 import { db } from '@/lib/db/client'
 import { currentAuthor } from '@/lib/sav/author'
-import { syncCaseEvent, type SyncResult } from '@/lib/sav/calendar'
+import { isCalendarConnected, syncCaseEvent, type SyncResult } from '@/lib/sav/calendar'
 import { linkClient } from '@/lib/sav/clientSync'
 import { addSavEvent } from '@/lib/sav/events'
 import { prepareEmail } from '@/lib/sav/ingest'
@@ -169,13 +169,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       default:
         throw new Error('Action inconnue.')
     }
+    // Rendez-vous fixé ou déplacé (dossier, planning) : ajouté à l'agenda Google s'il est connecté.
     // Déjà au planning : la date changée déplace l'événement ; un dossier qui n'est plus planifié le retire
-    if (c.planningEventId) {
-      const result: SyncResult | Error = await syncCaseEvent(id).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))))
+    const create = body.action === 'schedule' && (await isCalendarConnected().catch(() => false))
+    if (c.planningEventId || create) {
+      const result: SyncResult | Error = await syncCaseEvent(id, { create }).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))))
       if (result instanceof Error) {
         await addSavEvent(id, 'PLANNING_ERROR', `Agenda non mis à jour : ${result.message}`, author)
         return NextResponse.json({ ok: true, warning: `Dossier enregistré, mais l'agenda n'a pas pu être mis à jour : ${result.message}` })
       }
+      if (result === 'added') await addSavEvent(id, 'PLANNING_ADDED', null, author)
       if (result === 'updated' && body.action === 'schedule') await addSavEvent(id, 'PLANNING_UPDATED', null, author)
       if (result === 'removed') await addSavEvent(id, 'PLANNING_REMOVED', null, author)
     }

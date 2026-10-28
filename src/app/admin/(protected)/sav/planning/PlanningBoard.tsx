@@ -314,7 +314,7 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
                       >
                         <span className="block font-semibold">{hhmm(b.start)} {c.name}</span>
                         <span className="block truncate opacity-80">{c.city}{techName(c.technicianId) ? ` · ${techName(c.technicianId)}` : ''}</span>
-                        {report && <span className="block font-semibold text-orange-700">Retour à faire</span>}
+                        {report && <span className="mt-0.5 inline-block rounded bg-orange-500 px-1 font-semibold text-white">Retour à faire</span>}
                         {done && <span className="block">✓ {STATUS_LABELS[c.status]}</span>}
                       </button>
                     )
