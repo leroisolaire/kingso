@@ -1,13 +1,15 @@
 import 'server-only'
 import { db } from '@/lib/db/client'
+import { defaultDuration } from './calendar'
 import { addSavEvent } from './events'
-import { formatParisDate } from './schedule'
+import { formatAppointment, formatParisDate } from './schedule'
 import { getSavSettings } from './settings'
 
 /**
  * Passages automatiques en « À rappeler » (appelé à l'ouverture du back-office SAV, pas besoin de tâche planifiée) :
  *  - email parti mais lien jamais ouvert : après 4 h sans chauffage / eau chaude, 24 h sinon ;
  *  - client parti de son chat (« Avec Kingso ») sans conclure depuis quelques minutes (réglable, 30 min).
+ * Et passage en « Retour technicien » des rendez-vous dont l'heure de fin est passée.
  */
 export async function refreshSavTimers(): Promise<number> {
   const s = await getSavSettings()
@@ -54,6 +56,21 @@ export async function refreshSavTimers(): Promise<number> {
         `parti vers ${formatParisDate(new Date(lastActivity), true)} sans indiquer si c'est résolu : à rappeler`,
       ].filter(Boolean).join(', ')
       await addSavEvent(c.id, 'CLIENT_LEFT', detail)
+    }
+  }
+  // Intervention passée : le technicien doit faire son retour
+  const minutes = await defaultDuration().catch(() => 120)
+  const past = await db.savCase.findMany({
+    where: { status: 'SCHEDULED', appointmentAt: { lt: new Date(now) } },
+    select: { id: true, appointmentAt: true, appointmentMinutes: true },
+  })
+  for (const c of past) {
+    const duration = c.appointmentMinutes ?? minutes
+    if (c.appointmentAt!.getTime() + duration * 60_000 > now) continue
+    const { count } = await db.savCase.updateMany({ where: { id: c.id, status: 'SCHEDULED' }, data: { status: 'TECH_REPORT' } })
+    if (count) {
+      moved++
+      await addSavEvent(c.id, 'TECH_REPORT_DUE', `Intervention du ${formatAppointment(c.appointmentAt!, duration)}`)
     }
   }
   return moved

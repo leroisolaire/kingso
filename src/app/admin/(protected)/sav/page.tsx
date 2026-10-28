@@ -56,10 +56,10 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
       // Onglet « Planifiés » : par date de rendez-vous (dossiers sans date en tête, à compléter)
       orderBy: search ? [{ receivedAt: 'desc' }]
         : done ? [{ updatedAt: 'desc' }]
-        : tab.statuses.every((s) => s === 'SCHEDULED') ? [{ appointmentAt: { sort: 'asc', nulls: 'first' } }]
+        : tab.statuses.every((s) => s === 'SCHEDULED' || s === 'TECH_REPORT') ? [{ appointmentAt: { sort: 'asc', nulls: 'first' } }]
         : [{ urgent: 'desc' }, { receivedAt: 'asc' }],
       take: search ? 100 : 200,
-      include: { _count: { select: { messages: true } } },
+      include: { _count: { select: { messages: true } }, technician: { select: { name: true, email: true } } },
     }),
     getSavSettings(),
     isCalendarConnected().catch(() => false),
@@ -92,11 +92,16 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
             Messages du répondeur et demandes des chats : Kingso les lit, les trie, prépare l&apos;email au client et propose de le dépanner.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <Link href="/admin/sav/planning" className="rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">
+          📅 Planning
+        </Link>
         {isSuperAdmin && (
           <Link href="/admin/sav/reglages" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Réglages et modèles d&apos;email
           </Link>
         )}
+        </div>
       </div>
 
       {settings.paused && canHandleCalls && (
@@ -172,7 +177,24 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                         <span aria-hidden="true">📅</span>
                         {c.appointmentAt ? `Intervention ${formatAppointment(c.appointmentAt, c.appointmentMinutes ?? defaultMinutes)}` : 'Planifié sans date : saisissez la date du rendez-vous'}
                         {c.planningEventId && <span className="font-medium text-green-700">· ✓ au planning</span>}
+                        {c.technician && <span className="font-medium text-gray-700">· 👷 {c.technician.name || c.technician.email}</span>}
                       </p>
+                    )}
+                    {c.status === 'TECH_REPORT' && (
+                      <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-orange-100 px-2.5 py-1 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">
+                        <span aria-hidden="true">🛠</span>
+                        Retour technicien attendu{c.appointmentAt ? ` — intervention du ${formatAppointment(c.appointmentAt)}` : ''}
+                        {c.technician && <span className="font-medium">· 👷 {c.technician.name || c.technician.email}</span>}
+                      </p>
+                    )}
+                    {c.techOutcome === 'QUOTE' && c.status === 'TO_CALL' && (
+                      <p className="mt-1 inline-flex rounded-lg bg-amber-50 px-2.5 py-1 text-sm font-semibold text-amber-900 ring-1 ring-amber-300">📄 Devis à faire</p>
+                    )}
+                    {c.techOutcome === 'REVISIT' && c.status === 'TO_SCHEDULE' && (
+                      <p className="mt-1 inline-flex rounded-lg bg-purple-50 px-2.5 py-1 text-sm font-semibold text-purple-900 ring-1 ring-purple-300">🔁 À repasser</p>
+                    )}
+                    {c.techOutcome === 'ABSENT' && c.status === 'TO_CALL' && (
+                      <p className="mt-1 inline-flex rounded-lg bg-orange-50 px-2.5 py-1 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">🚪 Client absent à l&apos;intervention</p>
                     )}
                     <p className="mt-0.5 line-clamp-2 text-sm text-gray-600">{c.summary}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">

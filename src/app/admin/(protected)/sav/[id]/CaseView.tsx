@@ -6,10 +6,17 @@ import Button from '@/components/ui/Button'
 import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
 import DictationButton from './DictationButton'
 import DurationSelect from '../DurationSelect'
-import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
+import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
+import { TechPhotos, TechReportForm, type CasePhoto } from './TechReport'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
 interface CaseData {
+  technicianId: string | null
+  techOutcome: string | null
+  techReport: string | null
+  techReportAt: string | null
+  techReportBy: string | null
+  techPhotos: CasePhoto[]
   id: string
   number: number
   source: string
@@ -70,6 +77,7 @@ interface Props {
   suggestions: ClientOption[]
   kingso: { tone: Presence['tone']; label: string; detail: string } | null
   calendarConnected: boolean
+  technicians: { id: string; name: string }[]
 }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
@@ -147,7 +155,7 @@ function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOp
   )
 }
 
-export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected }: Props) {
+export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected, technicians }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -171,6 +179,9 @@ export default function CaseView({ data, link, paused, templates, assistants, su
   const [appointment, setAppointment] = useState('')
   const [reschedule, setReschedule] = useState(false)
   const [minutes, setMinutes] = useState(data.appointmentMinutes)
+  const [techId, setTechId] = useState(data.technicianId ?? '')
+  const [reporting, setReporting] = useState(false)
+  const technicianName = technicians.find((t) => t.id === data.technicianId)?.name
 
   const call = async (key: string, url: string, payload: unknown, method = 'POST') => {
     setBusy(key)
@@ -386,7 +397,11 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                       <DurationSelect value={minutes} onChange={setMinutes} className="py-2" />
                     </label>
                   </div>
-                  <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString(), durationMinutes: minutes }).then((r) => r && setReschedule(false))} disabled={!appointment || busy !== null}>
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    Technicien
+                    <TechnicianSelect technicians={technicians} value={techId} onChange={setTechId} />
+                  </label>
+                  <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString(), durationMinutes: minutes, technicianId: techId || null }).then((r) => r && setReschedule(false))} disabled={!appointment || busy !== null}>
                     Fixer le rendez-vous
                   </Button>
                   {reschedule && <Button type="button" size="sm" variant="ghost" onClick={() => setReschedule(false)}>Annuler</Button>}
@@ -397,6 +412,15 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                   <p className="flex items-center gap-2 rounded-lg bg-sky-50 px-3 py-2 text-base font-semibold text-sky-900 ring-1 ring-sky-300">
                     <span aria-hidden="true">📅</span> Intervention {data.appointmentAt}
                   </p>
+                  <label className="flex items-center gap-2 text-sm text-gray-600">
+                    Technicien
+                    <TechnicianSelect
+                      technicians={technicians}
+                      value={data.technicianId ?? ''}
+                      onChange={(id) => action('assign', { technicianId: id || null })}
+                      disabled={busy !== null}
+                    />
+                  </label>
                   {data.planningLink ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                       <span className="font-semibold text-green-700">✓ Ajouté au planning</span>
@@ -412,10 +436,22 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                   ) : (
                     <p className="text-xs text-gray-500">Pour ajouter ce rendez-vous à l&apos;agenda, connectez l&apos;agenda du planning dans Réglages SAV.</p>
                   )}
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="sm" onClick={() => action('status', { status: 'RESOLVED' })} disabled={busy !== null}>Intervention faite : résolu</Button>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => { setAppointment(toLocalInput(data.appointmentIso)); setMinutes(data.appointmentMinutes); setReschedule(true) }}>Changer la date ou la durée</Button>
-                  </div>
+                  {reporting ? (
+                    <TechReportForm caseId={data.id} photos={data.techPhotos} onCancel={() => setReporting(false)} />
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" size="sm" onClick={() => setReporting(true)} disabled={busy !== null}>Faire le retour d&apos;intervention</Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => { setAppointment(toLocalInput(data.appointmentIso)); setMinutes(data.appointmentMinutes); setTechId(data.technicianId ?? ''); setReschedule(true) }}>Changer la date, la durée ou le technicien</Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {data.status === 'TECH_REPORT' && (
+                <div className="space-y-2">
+                  <p className="rounded-lg bg-orange-100 px-3 py-2 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">
+                    Intervention passée{data.appointmentAt ? ` (${data.appointmentAt})` : ''}{technicianName ? ` — ${technicianName}` : ''} : retour du technicien attendu.
+                  </p>
+                  <TechReportForm caseId={data.id} photos={data.techPhotos} />
                 </div>
               )}
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
@@ -435,6 +471,20 @@ export default function CaseView({ data, link, paused, templates, assistants, su
               <Button type="button" size="sm" variant="secondary" onClick={() => action('status', { status: 'TO_CALL' })} disabled={busy !== null}>
                 Rouvrir (à rappeler)
               </Button>
+            </Card>
+          )}
+
+          {/* Dernier retour du technicien */}
+          {data.techReportAt && data.techOutcome && (
+            <Card title="Retour technicien">
+              <p className="text-sm font-semibold text-gray-900">
+                {TECH_OUTCOMES[data.techOutcome as TechOutcome]?.icon} {TECH_OUTCOMES[data.techOutcome as TechOutcome]?.label ?? data.techOutcome}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500">Le {data.techReportAt}{data.techReportBy ? ` par ${data.techReportBy}` : ''}</p>
+              {data.techReport && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{data.techReport}</p>}
+              {data.status !== 'TECH_REPORT' && !reporting && (
+                <div className="mt-3"><TechPhotos caseId={data.id} photos={data.techPhotos} editable /></div>
+              )}
             </Card>
           )}
 
@@ -528,5 +578,24 @@ export default function CaseView({ data, link, paused, templates, assistants, su
         </div>
       </div>
     </div>
+  )
+}
+
+function TechnicianSelect({ technicians, value, onChange, disabled }: {
+  technicians: { id: string; name: string }[]
+  value: string
+  onChange: (id: string) => void
+  disabled?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
+    >
+      <option value="">{technicians.length ? 'Aucun' : 'Aucun technicien (rôle à donner dans Utilisateurs)'}</option>
+      {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+    </select>
   )
 }

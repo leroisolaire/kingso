@@ -8,6 +8,7 @@ export const STATUS_LABELS: Record<SavStatus, string> = {
   TO_CALL: 'À rappeler',
   TO_SCHEDULE: 'À planifier',
   SCHEDULED: 'Planifié',
+  TECH_REPORT: 'Retour technicien',
   RESOLVED: 'Résolu',
   CLOSED: 'Clos',
 }
@@ -19,6 +20,7 @@ export const STATUS_COLORS: Record<SavStatus, string> = {
   TO_CALL: 'bg-orange-100 text-orange-800',
   TO_SCHEDULE: 'bg-purple-100 text-purple-800',
   SCHEDULED: 'bg-teal-100 text-teal-800',
+  TECH_REPORT: 'bg-orange-200 text-orange-900',
   RESOLVED: 'bg-green-100 text-green-800',
   CLOSED: 'bg-gray-100 text-gray-600',
 }
@@ -47,6 +49,29 @@ export const SAV_TABS: { key: string; label: string; statuses: SavStatus[] }[] =
   { key: 'email-envoye', label: 'Email envoyé', statuses: ['WAITING'] },
   { key: 'kingso', label: 'Avec Kingso', statuses: ['IN_CHAT'] },
   { key: 'planifies', label: 'Planifiés', statuses: ['SCHEDULED'] },
+  { key: 'retour-technicien', label: 'Retour technicien', statuses: ['TECH_REPORT'] },
   { key: 'resolus', label: 'Résolus', statuses: ['RESOLVED'] },
   { key: 'clos', label: 'Clos', statuses: ['CLOSED'] },
 ]
+
+/** Issues du retour technicien, et statut que prend alors le dossier. */
+export const TECH_OUTCOMES = {
+  RESOLVED: { label: 'Réparé / résolu', icon: '✅', status: 'RESOLVED' },
+  REVISIT: { label: 'À repasser (pièce, 2e visite)', icon: '🔁', status: 'TO_SCHEDULE' },
+  ABSENT: { label: 'Client absent', icon: '🚪', status: 'TO_CALL' },
+  QUOTE: { label: 'Devis à faire', icon: '📄', status: 'TO_CALL' },
+} as const satisfies Record<string, { label: string; icon: string; status: SavStatus }>
+export type TechOutcome = keyof typeof TECH_OUTCOMES
+
+/** Couleurs des techniciens sur le planning (dans l'ordre de la liste des techniciens). */
+export const TECH_COLORS = [
+  { block: 'bg-sky-100 border-sky-500 text-sky-950', dot: 'bg-sky-500' },
+  { block: 'bg-emerald-100 border-emerald-500 text-emerald-950', dot: 'bg-emerald-500' },
+  { block: 'bg-violet-100 border-violet-500 text-violet-950', dot: 'bg-violet-500' },
+  { block: 'bg-pink-100 border-pink-500 text-pink-950', dot: 'bg-pink-500' },
+  { block: 'bg-lime-100 border-lime-600 text-lime-950', dot: 'bg-lime-600' },
+  { block: 'bg-cyan-100 border-cyan-600 text-cyan-950', dot: 'bg-cyan-600' },
+  { block: 'bg-fuchsia-100 border-fuchsia-500 text-fuchsia-950', dot: 'bg-fuchsia-500' },
+  { block: 'bg-yellow-100 border-yellow-500 text-yellow-950', dot: 'bg-yellow-500' },
+]
+export const NO_TECH_COLOR = { block: 'bg-gray-100 border-gray-400 text-gray-900', dot: 'bg-gray-400' }

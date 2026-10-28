@@ -27,11 +27,13 @@ enum DocumentReview {
   IGNORED // écarté par l'équipe
 }
 
-// Rôles du back-office (cumulables) : Super admin = tout ; SAV = espace SAV ; Planning = interventions à planifier
+// Rôles du back-office (cumulables) : Super admin = tout ; SAV = espace SAV ; Planning = interventions à planifier ;
+// Technicien = espace SAV, affecté aux rendez-vous
 enum UserRole {
   SUPER_ADMIN
   SAV
   PLANNING
+  TECHNICIAN
 }
 
 // Public visé par un chat : un chat CLIENT ne lit jamais que les documents PUBLIC
@@ -290,6 +292,7 @@ model User {
   lastLoginAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  savInterventions SavCase[] @relation("SavTechnician")
 }
 
 model WebSource {
@@ -334,6 +337,7 @@ enum SavStatus {
   TO_CALL // à rappeler par le SAV
   TO_SCHEDULE // intervention à planifier
   SCHEDULED // rendez-vous fixé
+  TECH_REPORT // rendez-vous passé : retour du technicien attendu
   RESOLVED // résolu (par Kingso ou au téléphone)
   CLOSED // clos sans suite
 }
@@ -397,6 +401,14 @@ model SavCase {
   planningDate     DateTime?
   appointmentAt    DateTime?
   appointmentMinutes Int? // durée de l'intervention (sinon la durée par défaut des réglages)
+  technicianId     String?
+  technician       User?        @relation("SavTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  // Retour du technicien après l'intervention
+  techOutcome      String? // RESOLVED, REVISIT, ABSENT, QUOTE
+  techReport       String?
+  techPhotos       String[]     @default([]) // chemins dans le stockage privé des photos
+  techReportAt     DateTime?
+  techReportBy     String?
   receivedAt       DateTime     @default(now())
   resolvedAt       DateTime?
   createdAt        DateTime     @default(now())
@@ -406,6 +418,7 @@ model SavCase {
 
   @@index([status])
   @@index([phoneKey])
+  @@index([appointmentAt])
 }
 
 // Message reçu (transcription du répondeur, demande du chat…)

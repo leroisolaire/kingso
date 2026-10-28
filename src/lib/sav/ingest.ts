@@ -17,7 +17,7 @@ import { getTemplate, TEMPLATE_LABELS, type TemplateKey } from './templates'
 // lecture par Kingso, regroupement avec un dossier ouvert du même numéro (relance), identification
 // du client, tri, puis préparation de l'email selon le cas.
 
-const OPEN_STATUSES: SavStatus[] = ['NEW', 'WAITING', 'IN_CHAT', 'TO_CALL', 'TO_SCHEDULE', 'SCHEDULED']
+const OPEN_STATUSES: SavStatus[] = ['NEW', 'WAITING', 'IN_CHAT', 'TO_CALL', 'TO_SCHEDULE', 'SCHEDULED', 'TECH_REPORT']
 const TOKEN_DAYS = 30
 
 
@@ -88,7 +88,7 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
     await addSavEvent(open.id, 'FOLLOW_UP', `${formatParisDate(receivedAt, true)} — ${analysis.summary}`, input.author)
     // Le client relance : plus question de lui proposer Kingso par email, on le rappelle en priorité
     await cancelCaseEmail(open.id, 'Le client a relancé : email remplacé', input.author).catch(() => false)
-    const reachedTeam = ['TO_SCHEDULE', 'SCHEDULED'].includes(open.status)
+    const reachedTeam = ['TO_SCHEDULE', 'SCHEDULED', 'TECH_REPORT'].includes(open.status)
     await db.savCase.update({
       where: { id: open.id },
       data: {

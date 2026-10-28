@@ -8,12 +8,33 @@ import { linkClient } from '@/lib/sav/clientSync'
 import { addSavEvent } from '@/lib/sav/events'
 import { prepareEmail } from '@/lib/sav/ingest'
 import { isValidDuration } from '@/lib/sav/duration'
-import { formatAppointment } from '@/lib/sav/schedule'
+import { formatAppointment, parisTime } from '@/lib/sav/schedule'
 import { cancelCaseEmail, sendCaseEmail } from '@/lib/sav/send'
-import { STATUS_LABELS } from '@/lib/sav/status'
+import { STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
+import { checkTechnician } from '@/lib/sav/technicians'
+import { removeCasePhoto, saveCasePhoto } from '@/lib/storage/attachments'
 import { TEMPLATE_KEYS, type TemplateKey } from '@/lib/sav/templates'
 
 export const maxDuration = 60
+
+const MAX_PHOTOS = 12
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+
+/** Date du rendez-vous : jour et heure de Paris (planning) ou date ISO (champ date du navigateur). */
+function appointmentDate(body: { day?: unknown; time?: unknown; appointmentAt?: unknown }): Date {
+  if (typeof body.day === 'string' && typeof body.time === 'string') {
+    const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(body.day)
+    const t = /^(\d{2}):(\d{2})$/.exec(body.time)
+    if (d && t) return parisTime(Number(d[1]), Number(d[2]), Number(d[3]), Number(t[1]), Number(t[2]))
+  }
+  return new Date(typeof body.appointmentAt === 'string' ? body.appointmentAt : NaN)
+}
+
+async function technicianName(id: string | null): Promise<string> {
+  if (!id) return 'Aucun technicien'
+  const u = await db.user.findUnique({ where: { id }, select: { name: true, email: true } })
+  return u?.name || u?.email || 'Technicien'
+}
 
 /** Actions de l'équipe sur un dossier (email, appel, planification, statut, note). */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +42,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params
   const body = await request.json().catch(() => ({}))
   const author = await currentAuthor()
-  const c = await db.savCase.findUnique({ where: { id }, select: { id: true, status: true, planningEventId: true } })
+  const c = await db.savCase.findUnique({ where: { id }, select: { id: true, status: true, planningEventId: true, techPhotos: true } })
   if (!c) return NextResponse.json({ error: 'Dossier introuvable.' }, { status: 404 })
 
   const setStatus = (status: SavStatus, extra: Record<string, unknown> = {}) =>
@@ -58,13 +79,62 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         await addSavEvent(id, 'CALL_UNREACHABLE', note, author)
         break
       case 'schedule': {
-        const at = new Date(body.appointmentAt)
+        const at = appointmentDate(body)
         if (Number.isNaN(at.getTime())) throw new Error('Date de rendez-vous invalide.')
-        const minutes = body.durationMinutes === undefined ? null : Number(body.durationMinutes)
-        if (minutes !== null && !isValidDuration(minutes)) throw new Error('Durée d’intervention invalide.')
-        await setStatus('SCHEDULED', { appointmentAt: at, appointmentMinutes: minutes })
-        await addSavEvent(id, 'SCHEDULED', `Rendez-vous le ${formatAppointment(at, minutes)}${note ? ` — ${note}` : ''}`, author)
+        // Durée et technicien : inchangés s'ils ne sont pas précisés (rendez-vous déplacé sur le planning)
+        const minutes = body.durationMinutes === undefined ? undefined : Number(body.durationMinutes)
+        if (minutes !== undefined && !isValidDuration(minutes)) throw new Error('Durée d’intervention invalide.')
+        const technicianId = body.technicianId === undefined ? undefined : await checkTechnician(body.technicianId)
+        await setStatus('SCHEDULED', {
+          appointmentAt: at,
+          ...(minutes !== undefined ? { appointmentMinutes: minutes } : {}),
+          ...(technicianId !== undefined ? { technicianId } : {}),
+        })
+        const saved = await db.savCase.findUniqueOrThrow({ where: { id }, select: { appointmentMinutes: true, technicianId: true } })
+        const who = saved.technicianId ? ` — ${await technicianName(saved.technicianId)}` : ''
+        await addSavEvent(id, 'SCHEDULED', `Rendez-vous le ${formatAppointment(at, saved.appointmentMinutes)}${who}${note ? ` — ${note}` : ''}`, author)
         break
+      }
+      case 'assign': {
+        const technicianId = await checkTechnician(body.technicianId ?? null)
+        await db.savCase.update({ where: { id }, data: { technicianId } })
+        await addSavEvent(id, 'TECH_ASSIGNED', await technicianName(technicianId), author)
+        break
+      }
+      case 'tech_photo': {
+        const photo = body.photo as { mediaType?: unknown; data?: unknown } | undefined
+        if (!photo || typeof photo.data !== 'string' || !PHOTO_TYPES.includes(String(photo.mediaType))) throw new Error('Photo invalide.')
+        if (photo.data.length > 6_000_000) throw new Error('Photo trop lourde.')
+        if (c.techPhotos.length >= MAX_PHOTOS) throw new Error(`${MAX_PHOTOS} photos au maximum.`)
+        const path = await saveCasePhoto(id, { mediaType: String(photo.mediaType), data: photo.data })
+        await db.savCase.update({ where: { id }, data: { techPhotos: { push: path } } })
+        return NextResponse.json({ ok: true, path })
+      }
+      case 'tech_photo_remove': {
+        if (typeof body.path !== 'string' || !c.techPhotos.includes(body.path)) throw new Error('Photo introuvable.')
+        await removeCasePhoto(body.path).catch(() => null)
+        await db.savCase.update({ where: { id }, data: { techPhotos: c.techPhotos.filter((p) => p !== body.path) } })
+        return NextResponse.json({ ok: true })
+      }
+      case 'tech_report': {
+        const outcome = body.outcome as TechOutcome
+        if (!(outcome in TECH_OUTCOMES)) throw new Error('Choisissez l’issue de l’intervention.')
+        const report = typeof body.report === 'string' ? body.report.trim().slice(0, 4000) : ''
+        const { status, label, icon } = TECH_OUTCOMES[outcome]
+        const again = outcome === 'REVISIT' || outcome === 'ABSENT'
+        await setStatus(status, {
+          techOutcome: outcome,
+          techReport: report || null,
+          techReportAt: new Date(),
+          techReportBy: author,
+          // L'événement de l'intervention passée reste dans l'agenda ; un nouveau rendez-vous en créera un autre
+          planningEventId: null,
+          ...(status === 'RESOLVED' ? { resolvedAt: new Date(), urgent: false } : {}),
+          ...(again ? { appointmentAt: null, appointmentMinutes: null } : {}),
+        })
+        const photos = c.techPhotos.length ? ` (${c.techPhotos.length} photo${c.techPhotos.length > 1 ? 's' : ''})` : ''
+        await addSavEvent(id, 'TECH_REPORT', `${icon} ${label}${photos}${report ? ` — ${report}` : ''}`, author)
+        return NextResponse.json({ ok: true })
       }
       case 'status': {
         const status = body.status as SavStatus

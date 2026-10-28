@@ -5,7 +5,7 @@ import { durationLabel } from './duration'
 const TZ = 'Europe/Paris'
 
 /** Composantes de la date à l'heure de Paris. */
-function parisParts(date: Date) {
+export function parisParts(date: Date) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-GB', {
       timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,

@@ -167,7 +167,7 @@ export function planningEventLink(ref: string | null): string | null {
   return `https://www.google.com/calendar/event?eid=${Buffer.from(`${parsed.eventId} ${parsed.calendarId}`).toString('base64url')}`
 }
 
-type CaseForEvent = Prisma.SavCaseGetPayload<{ include: { client: true } }>
+type CaseForEvent = Prisma.SavCaseGetPayload<{ include: { client: true; technician: { select: { name: true; email: true } } } }>
 
 function eventBody(c: CaseForEvent, start: Date, durationMinutes: number) {
   const end = new Date(start.getTime() + durationMinutes * 60_000)
@@ -181,6 +181,7 @@ function eventBody(c: CaseForEvent, start: Date, durationMinutes: number) {
     c.equipment ? `Équipement : ${c.equipment}` : null,
     c.errorCode ? `Code erreur : ${c.errorCode}` : null,
     c.client?.contract ? `Contrat : ${c.client.contract}` : null,
+    c.technician ? `Technicien : ${c.technician.name || c.technician.email}` : null,
   ].filter(Boolean)
   const description = [details.join('\n'), c.summary, `Dossier Kingso : ${admin}`].filter(Boolean).join('\n\n')
   return {
@@ -199,10 +200,13 @@ export type SyncResult = 'added' | 'updated' | 'removed' | 'unchanged'
  * dossier qui n'est plus planifié → événement retiré. Sans agenda connecté : rien.
  */
 export async function syncCaseEvent(caseId: string, options: { create?: boolean; remove?: boolean } = {}): Promise<SyncResult> {
-  const c = await db.savCase.findUniqueOrThrow({ where: { id: caseId }, include: { client: true } })
+  const c = await db.savCase.findUniqueOrThrow({
+    where: { id: caseId },
+    include: { client: true, technician: { select: { name: true, email: true } } },
+  })
   const ref = parseRef(c.planningEventId)
-  // Intervention faite (résolu) ou dossier clos : l'événement reste dans l'agenda, comme trace
-  if (!options.remove && (c.status === 'RESOLVED' || c.status === 'CLOSED')) return 'unchanged'
+  // Intervention passée (retour technicien, résolu) ou dossier clos : l'événement reste dans l'agenda, comme trace
+  if (!options.remove && (c.status === 'TECH_REPORT' || c.status === 'RESOLVED' || c.status === 'CLOSED')) return 'unchanged'
   const wanted = !options.remove && c.status === 'SCHEDULED' && c.appointmentAt !== null
   if (!ref && !(wanted && options.create)) return 'unchanged'
 
@@ -243,4 +247,39 @@ export async function syncCaseEvent(caseId: string, options: { create?: boolean;
   })
   await db.savCase.update({ where: { id: caseId }, data: { planningEventId: `${state.calendarId} ${created.id}` } })
   return 'added'
+}
+
+export interface AgendaEvent {
+  id: string
+  title: string
+  start: string
+  end: string
+  allDay: boolean
+}
+
+/**
+ * Événements de l'agenda du planning sur une période (vue complète du planning) : tous sauf ceux créés par Kingso,
+ * déjà affichés comme dossiers. Rien si l'agenda n'est pas connecté.
+ */
+export async function listAgendaEvents(from: Date, to: Date, exclude: string[] = []): Promise<AgendaEvent[]> {
+  const state = await getCalendarState()
+  const token = await accessToken()
+  if (!token || !state.calendarId) return []
+  const params = new URLSearchParams({
+    timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250',
+  })
+  const res = await calendarFetch<{ items?: {
+    id: string; summary?: string; status?: string
+    start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }
+  }[] }>(token, `/calendars/${encodeURIComponent(state.calendarId)}/events?${params}`)
+  const skip = new Set(exclude.map((ref) => parseRef(ref)?.eventId).filter(Boolean))
+  return (res.items ?? [])
+    .filter((e) => e.status !== 'cancelled' && !skip.has(e.id) && (e.start?.dateTime || e.start?.date))
+    .map((e) => ({
+      id: e.id,
+      title: e.summary || '(sans titre)',
+      allDay: !e.start?.dateTime,
+      start: e.start?.dateTime ?? e.start!.date!,
+      end: e.end?.dateTime ?? e.end?.date ?? e.start?.dateTime ?? e.start!.date!,
+    }))
 }

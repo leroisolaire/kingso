@@ -65,3 +65,21 @@ export async function downloadAttachments(paths: string[]): Promise<{ name: stri
   }
   return files
 }
+
+/** Photo du retour technicien d'un dossier SAV (même stockage privé) ; renvoie son chemin. */
+export async function saveCasePhoto(caseId: string, image: { mediaType: string; data: string }): Promise<string> {
+  const supabase = getClient()
+  if (!supabase) throw new Error('Stockage des photos indisponible.')
+  await ensurePrivateBucket(supabase, BUCKET, '5MB')
+  const path = `sav/${caseId}/${randomUUID()}.${EXTENSIONS[image.mediaType] ?? 'jpg'}`
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, Buffer.from(image.data, 'base64'), { contentType: image.mediaType, upsert: false })
+  if (error) throw new Error(`Photo non enregistrée : ${error.message}`)
+  return path
+}
+
+export async function removeCasePhoto(path: string): Promise<void> {
+  const supabase = getClient()
+  if (supabase && path.startsWith('sav/')) await supabase.storage.from(BUCKET).remove([path])
+}

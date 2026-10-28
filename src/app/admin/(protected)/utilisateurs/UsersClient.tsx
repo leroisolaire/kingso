@@ -21,6 +21,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   SUPER_ADMIN: 'bg-slate-800 text-white',
   SAV: 'bg-amber-100 text-amber-900',
   PLANNING: 'bg-sky-100 text-sky-900',
+  TECHNICIAN: 'bg-emerald-100 text-emerald-900',
 }
 
 function RoleChecks({ value, onChange, disabled }: { value: UserRole[]; onChange: (roles: UserRole[]) => void; disabled?: (r: UserRole) => boolean }) {

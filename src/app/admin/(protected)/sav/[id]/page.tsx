@@ -13,6 +13,8 @@ import { SAV_TABS } from '@/lib/sav/status'
 import { getTemplates } from '@/lib/sav/templates'
 import { refreshSavTimers } from '@/lib/sav/timers'
 import { kingsoPresence } from '@/lib/sav/presence'
+import { getTechnicians } from '@/lib/sav/technicians'
+import { getSignedUrls } from '@/lib/storage/attachments'
 import AutoRefresh from '../AutoRefresh'
 import CaseView from './CaseView'
 
@@ -52,7 +54,7 @@ export default async function SavCasePage({ params, searchParams }: {
   })
   if (!c) notFound()
 
-  const [conversation, templates, assistants, settings, suggestions, calendarConnected, defaultMinutes] = await Promise.all([
+  const [conversation, templates, assistants, settings, suggestions, calendarConnected, defaultMinutes, technicians, photoUrls] = await Promise.all([
     c.chatSessionToken
       ? db.history.findMany({ where: { sessionToken: c.chatSessionToken }, orderBy: { createdAt: 'asc' }, take: 100 })
       : Promise.resolve([]),
@@ -62,6 +64,8 @@ export default async function SavCasePage({ params, searchParams }: {
     c.clientId ? Promise.resolve([]) : suggestClients(c).catch(() => []),
     isCalendarConnected().catch(() => false),
     defaultDuration().catch(() => 120),
+    getTechnicians(),
+    getSignedUrls(c.techPhotos).catch(() => ({} as Record<string, string>)),
   ])
 
   // Échange avec Kingso : présence en direct et résumé (lien ouvert, messages, départ)
@@ -92,6 +96,7 @@ export default async function SavCasePage({ params, searchParams }: {
         assistants={assistants}
         kingso={kingso}
         calendarConnected={calendarConnected}
+        technicians={technicians}
         suggestions={suggestions.map((s) => ({ ...s, phones: s.phones.map(formatPhone) }))}
         data={{
           id: c.id,
@@ -128,6 +133,12 @@ export default async function SavCasePage({ params, searchParams }: {
           appointmentMinutes: c.appointmentMinutes ?? defaultMinutes,
           appointmentIso: c.appointmentAt?.toISOString() ?? null,
           planningLink: planningEventLink(c.planningEventId),
+          technicianId: c.technicianId,
+          techOutcome: c.techOutcome,
+          techReport: c.techReport,
+          techReportAt: c.techReportAt ? formatParisDate(c.techReportAt, true) : null,
+          techReportBy: c.techReportBy,
+          techPhotos: c.techPhotos.map((path) => ({ path, url: photoUrls[path] ?? null })),
           messages: c.messages.map((m) => ({
             id: m.id, source: m.source, text: m.text, at: formatParisDate(m.receivedAt, true),
             phone: formatPhone(m.callerPhone), durationSec: m.durationSec,

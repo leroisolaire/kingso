@@ -9,6 +9,7 @@ import { canAccess, ROLE_LABELS, type UserRole } from '@/lib/auth/permissions'
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
   { href: '/admin/sav', label: 'Espace SAV', icon: '☎' },
+  { href: '/admin/sav/planning', label: 'Planning', icon: '▤' },
   { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },
@@ -44,10 +45,11 @@ export default function AdminSidebar({ user, badges = {} }: AdminSidebarProps) {
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <ul className="space-y-1">
           {navItems.filter((item) => canAccess(user?.roles ?? [], item.href)).map((item) => {
+            // Lien le plus précis qui correspond (Planning plutôt qu'Espace SAV)
             const isActive =
               item.href === '/admin'
                 ? pathname === '/admin'
-                : pathname.startsWith(item.href)
+                : pathname.startsWith(item.href) && !navItems.some((o) => o.href.length > item.href.length && o.href.startsWith(item.href) && pathname.startsWith(o.href))
 
             return (
               <li key={item.href}>
