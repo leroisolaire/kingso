@@ -8,13 +8,16 @@ import { createSession, deleteSession } from '@/lib/auth/session'
 
 export type LoginState = { error?: string } | undefined
 
-/** Connexion de secours par mot de passe (les collaborateurs se connectent avec Google). */
+/**
+ * Connexion par identifiant (email ou nom de connexion) et mot de passe attribué par le Super admin,
+ * pour les personnes sans compte Google (les autres se connectent avec Google).
+ */
 export async function login(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim().toLowerCase()
   const password = String(formData.get('password') ?? '')
 
   if (!email || !password) {
-    return { error: 'Email et mot de passe requis.' }
+    return { error: 'Identifiant et mot de passe requis.' }
   }
 
   const user = await db.user.findUnique({ where: { email } })

@@ -22,6 +22,26 @@ export function normalizeEmail(value: unknown): string | null {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.endsWith(`@${LOGIN_DOMAIN}`) ? email : null
 }
 
+/** Identifiant d'un compte à mot de passe (personne sans compte Google) : un email quelconque ou un nom de connexion. */
+export function normalizeLogin(value: unknown): string | null {
+  const login = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login)) return login
+  return /^[a-z0-9][a-z0-9._-]{2,49}$/.test(login) ? login : null
+}
+
+export const MIN_PASSWORD_LENGTH = 10
+
+export function passwordError(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length < MIN_PASSWORD_LENGTH) return `Mot de passe trop court : ${MIN_PASSWORD_LENGTH} caractères minimum.`
+  if (value.length > 200) return 'Mot de passe trop long.'
+  return null
+}
+
+/** Compte qui peut se connecter avec Google (adresse du domaine). */
+export function isGoogleEmail(email: string): boolean {
+  return normalizeEmail(email) !== null
+}
+
 /** Il doit toujours rester au moins un Super admin actif. */
 export async function otherActiveSuperAdmins(userId: string): Promise<number> {
   return db.user.count({ where: { id: { not: userId }, active: true, roles: { has: 'SUPER_ADMIN' } } })

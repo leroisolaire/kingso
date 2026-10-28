@@ -33,19 +33,29 @@ export default function LoginForm({ error }: { error: string | null }) {
       <p className="text-center text-xs text-gray-400">Avec votre compte @leroisolaire.fr</p>
 
       {!showPassword ? (
-        <button type="button" onClick={() => setShowPassword(true)} className="block w-full text-center text-xs text-gray-400 hover:text-gray-600 hover:underline">
-          Connexion de secours par mot de passe
-        </button>
+        <div className="border-t border-gray-100 pt-4 text-center">
+          <p className="text-xs text-gray-400">Pas de compte Google ?</p>
+          <button
+            type="button"
+            onClick={() => setShowPassword(true)}
+            className="mt-2 w-full rounded-md border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Identifiant et mot de passe
+          </button>
+        </div>
       ) : (
         <form action={action} className="space-y-4 border-t border-gray-100 pt-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700">Identifiant ou email</label>
             <input
               id="email"
               name="email"
-              type="email"
+              type="text"
               required
-              autoComplete="email"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="username"
               className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-amber-500 focus:outline-none"
             />
           </div>

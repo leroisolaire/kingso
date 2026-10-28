@@ -18,8 +18,9 @@ export default async function UsersPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Utilisateurs</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Chaque collaborateur se connecte avec son compte Google @{LOGIN_DOMAIN}. Seules les personnes ajoutées ici ont accès au
-          back-office, selon leurs rôles. Un changement de rôle ou une désactivation prend effet immédiatement.
+          Chaque collaborateur se connecte avec son compte Google @{LOGIN_DOMAIN}, ou, s&apos;il n&apos;en a pas, avec un identifiant et
+          un mot de passe que vous lui attribuez. Seules les personnes ajoutées ici ont accès au back-office, selon leurs rôles.
+          Un changement de rôle, de mot de passe ou une désactivation prend effet immédiatement.
         </p>
       </div>
       <UsersClient

@@ -1,8 +1,9 @@
+import bcrypt from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/client'
-import { otherActiveSuperAdmins, parseRoles, requireSuperAdmin } from '@/lib/auth/users'
+import { isGoogleEmail, otherActiveSuperAdmins, parseRoles, passwordError, requireSuperAdmin } from '@/lib/auth/users'
 
-/** Modifie un compte : nom, rôles, actif. Changer les rôles ou désactiver ferme ses sessions ouvertes. */
+/** Modifie un compte : nom, rôles, actif, mot de passe. Changer les rôles ou désactiver ferme ses sessions ouvertes. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const me = await requireSuperAdmin()
   if (!me) return NextResponse.json({ error: 'Réservé au Super admin.' }, { status: 403 })
@@ -11,7 +12,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!user) return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 })
   const body = await request.json().catch(() => ({}))
 
-  const data: { name?: string | null; roles?: typeof user.roles; active?: boolean; sessionVersion?: { increment: number } } = {}
+  const data: { name?: string | null; roles?: typeof user.roles; active?: boolean; password?: string | null; sessionVersion?: { increment: number } } = {}
+
+  // Mot de passe attribué (personne sans compte Google) : le changer ferme ses sessions ouvertes
+  if ('password' in body) {
+    if (body.password === null) {
+      if (!isGoogleEmail(user.email)) {
+        return NextResponse.json({ error: 'Ce compte ne peut se connecter qu\'avec son mot de passe : changez-le ou désactivez le compte.' }, { status: 400 })
+      }
+      data.password = null
+    } else {
+      const error = passwordError(body.password)
+      if (error) return NextResponse.json({ error }, { status: 400 })
+      data.password = await bcrypt.hash(body.password, 10)
+    }
+    if (id !== me.userId) data.sessionVersion = { increment: 1 }
+  }
   if ('name' in body) data.name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 100) : null
   if ('roles' in body) {
     const roles = parseRoles(body.roles)

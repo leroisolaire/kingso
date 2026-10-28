@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
+import DictationButton from './DictationButton'
 import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
@@ -334,7 +335,8 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                     </a>
                     {data.callbackPhone && data.phone && data.callbackPhone !== data.phone && <span className="text-xs text-gray-400"> (appelant : {data.phone})</span>}
                   </p>
-                  <textarea value={callNote} onChange={(e) => setCallNote(e.target.value)} rows={2} placeholder="Compte rendu de l'appel (facultatif)" className={inputCls} />
+                  <textarea value={callNote} onChange={(e) => setCallNote(e.target.value)} rows={7} placeholder="Compte rendu de l'appel (facultatif) : tapez ou dictez avec le micro" className={`${inputCls} min-h-40 resize-y`} />
+                  <DictationButton value={callNote} onChange={setCallNote} disabled={busy !== null} />
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" size="sm" onClick={() => action('call_resolved', { note: callNote }).then((r) => r && setCallNote(''))} disabled={busy !== null}>Résolu au téléphone</Button>
                     <Button type="button" size="sm" variant="secondary" onClick={() => action('call_intervention', { note: callNote }).then((r) => r && setCallNote(''))} disabled={busy !== null}>Intervention nécessaire</Button>
@@ -445,10 +447,13 @@ export default function CaseView({ data, link, paused, templates, assistants, su
           {/* Historique */}
           <Card title="Historique">
             <div className="mb-3 space-y-2">
-              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Ajouter une note…" className={inputCls} />
-              <Button type="button" size="sm" variant="secondary" onClick={() => action('note', { note }).then((r) => r && setNote(''))} disabled={!note.trim() || busy !== null}>
-                Ajouter
-              </Button>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={5} placeholder="Ajouter une note : tapez ou dictez avec le micro" className={`${inputCls} min-h-28 resize-y`} />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" variant="secondary" onClick={() => action('note', { note }).then((r) => r && setNote(''))} disabled={!note.trim() || busy !== null}>
+                  Ajouter
+                </Button>
+                <DictationButton value={note} onChange={setNote} disabled={busy !== null} />
+              </div>
             </div>
             <ol className="space-y-2.5">
               {data.events.map((e) => (
