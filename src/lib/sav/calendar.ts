@@ -4,7 +4,9 @@ import { isOAuthConfigured, oauthTokenRequest } from '@/lib/auth/googleOAuth'
 import { seal, unseal } from '@/lib/auth/sealed'
 import { db } from '@/lib/db/client'
 import { DEFAULT_DURATION_MINUTES, isValidDuration } from './duration'
+import { addSavEvent } from './events'
 import { formatPhone } from './phone'
+import { formatAppointment } from './schedule'
 
 export { DEFAULT_DURATION_MINUTES }
 
@@ -33,6 +35,8 @@ export interface CalendarState {
   connectedAt?: string
   connectedBy?: string | null
   error?: string | null
+  /** Dernière lecture des changements faits dans Google Agenda */
+  lastPullAt?: string
 }
 
 export interface CalendarOption { id: string; name: string; primary: boolean }
@@ -282,4 +286,63 @@ export async function listAgendaEvents(from: Date, to: Date, exclude: string[] =
       start: e.start?.dateTime ?? e.start!.date!,
       end: e.end?.dateTime ?? e.end?.date ?? e.start?.dateTime ?? e.start!.date!,
     }))
+}
+
+// ── Agenda → Kingso ──
+const PULL_EVERY_MS = 60_000
+
+/**
+ * Reprend dans Kingso les rendez-vous modifiés directement dans Google Agenda (appelé à l'ouverture du back-office SAV,
+ * au plus une fois par minute) : événement déplacé ou rallongé → nouvelle date et durée ; événement supprimé → le dossier
+ * n'est plus relié à l'agenda (le rendez-vous reste dans Kingso, à revoir).
+ */
+export async function pullAgendaChanges(): Promise<number> {
+  const state = await getCalendarState()
+  if (!state.token || !state.calendarId || !isOAuthConfigured()) return 0
+  if (state.lastPullAt && Date.now() - new Date(state.lastPullAt).getTime() < PULL_EVERY_MS) return 0
+  await saveState({ lastPullAt: new Date().toISOString() })
+
+  const cases = await db.savCase.findMany({
+    where: { planningEventId: { startsWith: `${state.calendarId} ` }, status: { in: ['SCHEDULED', 'TECH_REPORT'] } },
+    select: { id: true, status: true, planningEventId: true, appointmentAt: true, appointmentMinutes: true },
+  })
+  if (cases.length === 0) return 0
+  const token = await accessToken()
+  if (!token) return 0
+
+  type GoogleEvent = { status?: string; start?: { dateTime?: string }; end?: { dateTime?: string } }
+  // Chaque rendez-vous relu dans l'agenda (quelques dizaines au plus), par petits paquets
+  const events: (GoogleEvent | null | undefined)[] = []
+  for (let i = 0; i < cases.length; i += 10) {
+    events.push(...await Promise.all(cases.slice(i, i + 10).map((c) => {
+      const ref = parseRef(c.planningEventId)!
+      return calendarFetch<GoogleEvent>(token, `/calendars/${encodeURIComponent(ref.calendarId)}/events/${encodeURIComponent(ref.eventId)}`)
+        // Supprimé de l'agenda : null ; autre erreur (réseau…) : undefined, on réessaiera
+        .catch((e: { status?: number }) => (e.status === 404 || e.status === 410 ? null : undefined))
+    })))
+  }
+
+  let changed = 0
+  for (const [i, c] of cases.entries()) {
+    const e = events[i]
+    if (e === undefined) continue
+    if (e === null || e.status === 'cancelled') {
+      await db.savCase.update({ where: { id: c.id }, data: { planningEventId: null } })
+      await addSavEvent(c.id, 'PLANNING_REMOVED', 'Supprimé dans Google Agenda : le rendez-vous est à revoir')
+      changed++
+      continue
+    }
+    if (!e.start?.dateTime || !e.end?.dateTime) continue // passé en « journée entière » : on ne touche à rien
+    const start = new Date(e.start.dateTime)
+    const minutes = Math.round((new Date(e.end.dateTime).getTime() - start.getTime()) / 60_000)
+    const duration = isValidDuration(minutes) ? minutes : c.appointmentMinutes
+    if (c.appointmentAt?.getTime() === start.getTime() && duration === c.appointmentMinutes) continue
+    // Intervention passée repoussée dans le futur : de nouveau planifiée
+    const end = start.getTime() + (duration ?? DEFAULT_DURATION_MINUTES) * 60_000
+    const status = c.status === 'TECH_REPORT' && end > Date.now() ? 'SCHEDULED' as const : c.status
+    await db.savCase.update({ where: { id: c.id }, data: { appointmentAt: start, appointmentMinutes: duration, status } })
+    await addSavEvent(c.id, 'PLANNING_PULLED', `Nouveau rendez-vous : ${formatAppointment(start, duration)}`)
+    changed++
+  }
+  return changed
 }

@@ -1,6 +1,6 @@
 import 'server-only'
 import { db } from '@/lib/db/client'
-import { defaultDuration } from './calendar'
+import { defaultDuration, pullAgendaChanges } from './calendar'
 import { addSavEvent } from './events'
 import { formatAppointment, formatParisDate } from './schedule'
 import { getSavSettings } from './settings'
@@ -12,6 +12,8 @@ import { getSavSettings } from './settings'
  * Et passage en « Retour technicien » des rendez-vous dont l'heure de fin est passée.
  */
 export async function refreshSavTimers(): Promise<number> {
+  // Rendez-vous déplacés dans Google Agenda : repris d'abord (un rendez-vous repoussé ne passe pas en « Retour technicien »)
+  await pullAgendaChanges().catch((e) => console.error('[agenda] lecture', e instanceof Error ? e.message : e))
   const s = await getSavSettings()
   const now = Date.now()
   let moved = 0

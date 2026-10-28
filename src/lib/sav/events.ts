@@ -35,6 +35,7 @@ export const EVENT_LABELS: Record<string, string> = {
   PLANNING_UPDATED: 'Planning mis à jour',
   PLANNING_REMOVED: 'Retiré du planning',
   PLANNING_ERROR: 'Erreur de planning',
+  PLANNING_PULLED: 'Déplacé dans Google Agenda',
   TECH_ASSIGNED: 'Technicien affecté',
   TECH_REPORT_DUE: 'Intervention passée : retour technicien attendu',
   TECH_REPORT: 'Retour technicien',
