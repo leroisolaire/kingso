@@ -7,8 +7,8 @@ import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
 import { smsLength } from '@/lib/sav/smsText'
 import DictationButton from './DictationButton'
 import DurationSelect from '../DurationSelect'
-import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
-import { TechPhotos, TechReportForm, type CasePhoto } from './TechReport'
+import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
+import { TechPhotos, TechReportForm, TechReportView, type CasePhoto } from './TechReport'
 import PhotoGallery, { type GalleryPhoto } from './PhotoGallery'
 import CaseRating from '../CaseRating'
 import TechnicianSuggestions from '../TechnicianSuggestions'
@@ -511,7 +511,7 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                     Intervenant
                     <TechnicianSelect technicians={technicians} value={techId} onChange={setTechId} />
                   </label>
-                  <TechnicianSuggestions caseId={data.id} selected={techId} onPick={setTechId} disabled={busy !== null} />
+                  <TechnicianSuggestions caseId={data.id} selected={techId} onPick={setTechId} disabled={busy !== null} day={appointment.slice(0, 10)} />
                   <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString(), durationMinutes: minutes, technicianId: techId || null }).then((r) => r && setReschedule(false))} disabled={!appointment || busy !== null}>
                     Fixer le rendez-vous
                   </Button>
@@ -601,14 +601,15 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
           {/* Dernier retour du technicien */}
           {data.techReportAt && data.techOutcome && (
             <Card title="Retour technicien">
-              <p className="text-sm font-semibold text-gray-900">
-                {TECH_OUTCOMES[data.techOutcome as TechOutcome]?.icon} {TECH_OUTCOMES[data.techOutcome as TechOutcome]?.label ?? data.techOutcome}
-              </p>
-              <p className="mt-0.5 text-xs text-gray-500">Le {data.techReportAt}{data.techReportBy ? ` par ${data.techReportBy}` : ''}</p>
-              {data.techReport && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{data.techReport}</p>}
-              {data.status !== 'TECH_REPORT' && !reporting && (
-                <div className="mt-3"><TechPhotos caseId={data.id} photos={data.techPhotos} editable /></div>
-              )}
+              <TechReportView
+                caseId={data.id}
+                outcome={data.techOutcome}
+                report={data.techReport}
+                at={data.techReportAt}
+                by={data.techReportBy}
+                photos={data.techPhotos}
+                editable={data.status !== 'TECH_REPORT' && !reporting}
+              />
             </Card>
           )}
 

@@ -314,6 +314,8 @@ export interface ChantierEvent {
   start: string
   end: string
   allDay: boolean
+  /** Lien vers l'événement dans Google Agenda */
+  link: string | null
 }
 
 /** Événements de l'agenda des chantiers sur une période (lecture seule). Rien si cet agenda n'est pas choisi. */
@@ -326,7 +328,7 @@ export async function listChantierEvents(from: Date, to: Date): Promise<Chantier
     timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '500',
   })
   const res = await calendarFetch<{ items?: {
-    id: string; summary?: string; status?: string; location?: string; description?: string
+    id: string; summary?: string; status?: string; location?: string; description?: string; htmlLink?: string
     start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }
   }[] }>(token, `/calendars/${encodeURIComponent(state.chantierCalendarId)}/events?${params}`)
   return (res.items ?? [])
@@ -336,6 +338,7 @@ export async function listChantierEvents(from: Date, to: Date): Promise<Chantier
       title: e.summary ?? '',
       location: e.location?.trim() || null,
       description: e.description?.trim() || null,
+      link: e.htmlLink ?? null,
       allDay: !e.start?.dateTime,
       start: e.start?.dateTime ?? e.start!.date!,
       end: e.end?.dateTime ?? e.end?.date ?? e.start?.dateTime ?? e.start!.date!,

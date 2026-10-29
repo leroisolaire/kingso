@@ -13,7 +13,7 @@ import { cancelCaseEmail, sendCaseEmail } from '@/lib/sav/send'
 import { sendCaseSms } from '@/lib/sav/sms'
 import { STATUS_LABELS } from '@/lib/sav/status'
 import { sendTechnicianLinkSms } from '@/lib/sav/techLink'
-import { addTechPhoto, removeTechPhoto, saveTechReport } from '@/lib/sav/techReport'
+import { addTechPhoto, removeTechPhoto, saveTechReport, updateTechReport } from '@/lib/sav/techReport'
 import { checkTechnician, ensureTechToken, interventionLink, technicianName } from '@/lib/sav/technicians'
 import { toRating, URGENT_FROM } from '@/lib/sav/rating'
 import { removeCasePhoto } from '@/lib/storage/attachments'
@@ -161,6 +161,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
       case 'tech_report':
         await saveTechReport(id, body.outcome, body.report, author)
+        return NextResponse.json({ ok: true })
+      case 'tech_report_edit':
+        await updateTechReport(id, body.outcome, body.report, author)
         return NextResponse.json({ ok: true })
       case 'status': {
         const status = body.status as SavStatus

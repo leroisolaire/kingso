@@ -12,7 +12,23 @@ const WINDOW_DAYS = 14
 const NEAR_KM = 30
 const MAX_GEOCODE = 80
 
-export interface NearbyChantier { km: number; days: string[]; sameDay: boolean; title: string }
+/** Un chantier de l'intervenant (agenda des chantiers), situé par rapport au dossier. */
+export interface ChantierInfo {
+  /** Titre de l'événement dans l'agenda */
+  title: string
+  /** Commune du chantier (adresse retrouvée), sinon null */
+  city: string | null
+  /** Distance au dossier à vol d'oiseau (km) ; null si l'une des deux adresses est introuvable */
+  km: number | null
+  /** Jours du chantier (« mar. 4 nov. ») */
+  days: string[]
+  /** Horaires : « 8h – 17h », « journée » ; null sur plusieurs jours */
+  hours: string | null
+  /** Le chantier a lieu le jour choisi pour le rendez-vous */
+  onDay: boolean
+  /** Lien vers l'événement dans Google Agenda */
+  link: string | null
+}
 
 export interface TechnicianSuggestion {
   id: string
@@ -24,12 +40,21 @@ export interface TechnicianSuggestion {
   level: number
   strengths: string[]
   warnings: string[]
-  nearby: NearbyChantier[]
+  /** Chantiers à moins de 30 km dans les 14 prochains jours (le jour choisi d'abord, puis les plus proches) */
+  nearby: ChantierInfo[]
+  /** Où il est le jour choisi pour le rendez-vous (tous ses chantiers ce jour-là, quelle que soit la distance) */
+  onDay: ChantierInfo[]
+  /** Repère agenda renseigné sur sa fiche (sinon ses chantiers ne peuvent pas être retrouvés) */
+  hasCodes: boolean
 }
 
 export interface Suggestions {
   skill: string | null
   difficulty: number | null
+  /** Commune du dossier */
+  caseCity: string | null
+  /** Jour choisi pour le rendez-vous (« mardi 4 novembre »), null si aucun */
+  day: string | null
   /** Agenda des chantiers choisi et lu */
   chantiers: 'off' | 'ok' | 'no-address' | 'error'
   chantierError: string | null
@@ -94,52 +119,82 @@ async function geocodeAll(queries: string[]): Promise<Map<string, Point | null>>
   return out
 }
 
-export async function suggestTechnicians(caseId: string): Promise<Suggestions> {
+const hm = (min: number) => `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, '0') : ''}`
+const parisMinute = (d: Date) => { const p = parisParts(d); return p.hour * 60 + p.minute }
+
+/** Horaires d'un chantier sur un seul jour (« 8h – 17h »), « journée », ou null sur plusieurs jours. */
+function eventHours(e: ChantierEvent, days: string[]): string | null {
+  if (days.length > 1) return null
+  if (e.allDay) return 'journée'
+  return `${hm(parisMinute(new Date(e.start)))} – ${hm(parisMinute(new Date(e.end)))}`
+}
+
+/** Commune d'une adresse géocodée (« 10 Rue … 13400 Aubagne » → « Aubagne »). */
+const cityOf = (label: string | null | undefined) => (label ? label.match(/\b\d{5}\s+(.+)$/)?.[1] ?? label : null)
+
+/**
+ * `day` (AAAA-MM-JJ) : jour envisagé pour le rendez-vous (date choisie dans le planning) ; par défaut celui du
+ * rendez-vous du dossier. Les chantiers de ce jour-là sont mis en avant.
+ */
+export async function suggestTechnicians(caseId: string, day?: string | null): Promise<Suggestions> {
   const c = await db.savCase.findUniqueOrThrow({
     where: { id: caseId },
     select: { product: true, difficulty: true, address: true, postalCode: true, city: true, appointmentAt: true },
   })
   const techs = await db.technician.findMany({ where: { active: true }, orderBy: { createdAt: 'asc' } })
   const skill = caseSkill(c.product)
-  const appointmentDay = c.appointmentAt ? dayKey(c.appointmentAt) : null
+  const chosenDay = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : c.appointmentAt ? dayKey(c.appointmentAt) : null
 
-  // Chantiers proches (seulement pour les intervenants qui ont un repère dans l'agenda)
-  const nearby = new Map<string, NearbyChantier[]>()
+  // Chantiers des intervenants qui ont un repère dans l'agenda : proches du dossier, et le jour choisi
+  const nearby = new Map<string, ChantierInfo[]>()
+  const onDay = new Map<string, ChantierInfo[]>()
   let chantiers: Suggestions['chantiers'] = 'off'
   let chantierError: string | null = null
+  let caseCity = c.city
   const state = await getCalendarState()
   const withCodes = techs.filter((t) => t.agendaCodes.length)
   if (state.chantierCalendarId && withCodes.length && (await isCalendarConnected().catch(() => false))) {
-    const casePoint = await geocode([c.address, c.postalCode, c.city].filter(Boolean).join(' '))
-    if (!casePoint) {
-      chantiers = 'no-address'
-    } else {
-      try {
-        const now = parisParts(new Date())
-        const from = parisTime(now.year, now.month, now.day, 0, 0)
-        const events = await listChantierEvents(from, new Date(from.getTime() + WINDOW_DAYS * 86_400_000))
-        // Rendez-vous SAV créés par Kingso (si l'agenda des chantiers est aussi celui du planning) : ignorés
-        const savRefs = new Set((await db.savCase.findMany({ where: { planningEventId: { not: null } }, select: { planningEventId: true } }))
-          .map((x) => x.planningEventId!.split(' ')[1]))
-        const relevant = events
-          .filter((e) => !savRefs.has(e.id))
-          .map((e) => ({ e, address: chantierAddress(e), techIds: withCodes.filter((t) => t.agendaCodes.some((code) => titleHasCode(e.title, code))).map((t) => t.id) }))
-          .filter((x) => x.techIds.length && x.address)
-        const points = await geocodeAll(relevant.map((x) => x.address!))
-        for (const { e, address, techIds } of relevant) {
-          const point = points.get(address!)
-          if (!point) continue
-          const km = distanceKm(casePoint, point)
-          if (km > NEAR_KM) continue
-          const days = eventDays(e)
-          const entry = { km: Math.round(km), days: days.map(dayLabel), sameDay: Boolean(appointmentDay && days.includes(appointmentDay)), title: e.title }
-          for (const id of techIds) nearby.set(id, [...(nearby.get(id) ?? []), entry])
+    try {
+      const casePoint = await geocode([c.address, c.postalCode, c.city].filter(Boolean).join(' '))
+      caseCity = c.city || cityOf(casePoint?.label)
+      const now = parisParts(new Date())
+      const today = parisTime(now.year, now.month, now.day, 0, 0)
+      const dayStart = chosenDay ? parisTime(Number(chosenDay.slice(0, 4)), Number(chosenDay.slice(5, 7)), Number(chosenDay.slice(8, 10)), 0, 0) : null
+      // 14 prochains jours, étendus au jour choisi s'il est plus loin (ou passé)
+      const from = dayStart && dayStart < today ? dayStart : today
+      const to = new Date(Math.max(today.getTime() + WINDOW_DAYS * 86_400_000, dayStart ? dayStart.getTime() + 86_400_000 : 0))
+      const events = await listChantierEvents(from, to)
+      // Rendez-vous SAV créés par Kingso (si l'agenda des chantiers est aussi celui du planning) : ignorés
+      const savRefs = new Set((await db.savCase.findMany({ where: { planningEventId: { not: null } }, select: { planningEventId: true } }))
+        .map((x) => x.planningEventId!.split(' ')[1]))
+      const relevant = events
+        .filter((e) => !savRefs.has(e.id))
+        .map((e) => ({ e, address: chantierAddress(e), techIds: withCodes.filter((t) => t.agendaCodes.some((code) => titleHasCode(e.title, code))).map((t) => t.id) }))
+        .filter((x) => x.techIds.length)
+      const points = await geocodeAll(relevant.map((x) => x.address).filter((a): a is string => Boolean(a)))
+      for (const { e, address, techIds } of relevant) {
+        const point = address ? points.get(address) ?? null : null
+        const km = point && casePoint ? Math.round(distanceKm(casePoint, point)) : null
+        const keys = eventDays(e)
+        const info: ChantierInfo = {
+          title: e.title,
+          city: cityOf(point?.label) ?? null,
+          km,
+          days: keys.map(dayLabel),
+          hours: eventHours(e, keys),
+          onDay: Boolean(chosenDay && keys.includes(chosenDay)),
+          link: e.link,
         }
-        chantiers = 'ok'
-      } catch (e) {
-        chantiers = 'error'
-        chantierError = e instanceof Error ? e.message : String(e)
+        const recent = keys.some((k) => k >= dayKey(today))
+        for (const id of techIds) {
+          if (info.onDay) onDay.set(id, [...(onDay.get(id) ?? []), info])
+          if (km !== null && km <= NEAR_KM && recent) nearby.set(id, [...(nearby.get(id) ?? []), info])
+        }
       }
+      chantiers = casePoint ? 'ok' : 'no-address'
+    } catch (e) {
+      chantiers = 'error'
+      chantierError = e instanceof Error ? e.message : String(e)
     }
   }
 
@@ -162,12 +217,14 @@ export async function suggestTechnicians(caseId: string): Promise<Suggestions> {
     const sector = inSector(t.sector, c.postalCode, c.city)
     if (sector === true) strengths.push(`secteur ${t.sector}`)
     if (sector === false) warnings.push('hors de son secteur')
-    const near = (nearby.get(t.id) ?? []).sort((a, b) => Number(b.sameDay) - Number(a.sameDay) || a.km - b.km).slice(0, 3)
-    return { id: t.id, name: t.name, kind: t.kind, ok: warnings.length === 0, level, strengths, warnings, nearby: near }
+    const near = (nearby.get(t.id) ?? []).sort((a, b) => Number(b.onDay) - Number(a.onDay) || (a.km ?? 999) - (b.km ?? 999)).slice(0, 5)
+    const day = (onDay.get(t.id) ?? []).sort((a, b) => (a.km ?? 999) - (b.km ?? 999))
+    return { id: t.id, name: t.name, kind: t.kind, ok: warnings.length === 0, level, strengths, warnings, nearby: near, onDay: day, hasCodes: t.agendaCodes.length > 0 }
   })
   const rank = (s: TechnicianSuggestion) => [
     s.ok ? 0 : 1,
-    s.nearby.some((n) => n.sameDay) ? 0 : 1,
+    // Sur un chantier proche le jour choisi d'abord
+    s.onDay.some((n) => n.km !== null && n.km <= NEAR_KM) ? 0 : 1,
     -s.level,
     s.nearby[0]?.km ?? 999,
     -s.strengths.length,
@@ -178,5 +235,13 @@ export async function suggestTechnicians(caseId: string): Promise<Suggestions> {
     for (let i = 0; i < ra.length; i++) if (ra[i] !== rb[i]) return ra[i] - rb[i]
     return a.name.localeCompare(b.name, 'fr')
   })
-  return { skill: skill ? SKILLS[skill as Skill] : null, difficulty: c.difficulty, chantiers, chantierError, items }
+  return {
+    skill: skill ? SKILLS[skill as Skill] : null,
+    difficulty: c.difficulty,
+    caseCity,
+    day: chosenDay ? new Date(`${chosenDay}T12:00:00Z`).toLocaleDateString('fr-FR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' }) : null,
+    chantiers,
+    chantierError,
+    items,
+  }
 }

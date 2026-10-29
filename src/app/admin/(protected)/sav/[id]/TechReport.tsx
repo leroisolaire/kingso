@@ -111,11 +111,21 @@ export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction 
   )
 }
 
-/** Retour du technicien après l'intervention : issue, compte rendu (dicté ou tapé) et photos. */
-export function TechReportForm({ caseId, photos, onCancel, endpoint }: { caseId: string; photos: CasePhoto[]; onCancel?: () => void; endpoint?: string }) {
+/**
+ * Retour du technicien après l'intervention : issue, compte rendu (dicté ou tapé) et photos.
+ * `initial` : retour déjà enregistré, à modifier.
+ */
+export function TechReportForm({ caseId, photos, onCancel, endpoint, initial, onSaved }: {
+  caseId: string
+  photos: CasePhoto[]
+  onCancel?: () => void
+  endpoint?: string
+  initial?: { outcome: TechOutcome | null; report: string }
+  onSaved?: () => void
+}) {
   const router = useRouter()
-  const [outcome, setOutcome] = useState<TechOutcome | null>(null)
-  const [report, setReport] = useState('')
+  const [outcome, setOutcome] = useState<TechOutcome | null>(initial?.outcome ?? null)
+  const [report, setReport] = useState(initial?.report ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -124,7 +134,9 @@ export function TechReportForm({ caseId, photos, onCancel, endpoint }: { caseId:
     setBusy(true)
     setError(null)
     try {
-      await postAction(caseId, { action: 'tech_report', outcome, report }, endpoint)
+      await postAction(caseId, { action: initial ? 'tech_report_edit' : 'tech_report', outcome, report }, endpoint)
+      setBusy(false)
+      onSaved?.()
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Retour non enregistré.')
@@ -134,7 +146,7 @@ export function TechReportForm({ caseId, photos, onCancel, endpoint }: { caseId:
 
   return (
     <div className="space-y-3 rounded-lg bg-orange-50 p-3 ring-1 ring-orange-200">
-      <p className="text-sm font-semibold text-orange-900">Retour d&apos;intervention</p>
+      <p className="text-sm font-semibold text-orange-900">{initial ? 'Modifier le retour d’intervention' : 'Retour d’intervention'}</p>
       <div className="grid gap-1.5 sm:grid-cols-2">
         {(Object.entries(TECH_OUTCOMES) as [TechOutcome, (typeof TECH_OUTCOMES)[TechOutcome]][]).map(([key, o]) => (
           <button
@@ -158,9 +170,47 @@ export function TechReportForm({ caseId, photos, onCancel, endpoint }: { caseId:
       <TechPhotos caseId={caseId} photos={photos} editable endpoint={endpoint} />
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={submit} loading={busy} disabled={!outcome || busy}>Enregistrer le retour</Button>
+        <Button type="button" onClick={submit} loading={busy} disabled={!outcome || busy}>{initial ? 'Enregistrer les modifications' : 'Enregistrer le retour'}</Button>
         {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Annuler</Button>}
       </div>
+    </div>
+  )
+}
+
+/** Retour enregistré : issue, compte rendu et photos, avec « Modifier le retour ». */
+export function TechReportView({ caseId, endpoint, outcome, report, at, by, photos, editable = true }: {
+  caseId: string
+  endpoint?: string
+  outcome: string | null
+  report: string | null
+  at: string | null
+  by: string | null
+  photos: CasePhoto[]
+  editable?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const o = outcome && outcome in TECH_OUTCOMES ? TECH_OUTCOMES[outcome as TechOutcome] : null
+  if (editing) {
+    return (
+      <TechReportForm
+        caseId={caseId}
+        endpoint={endpoint}
+        photos={photos}
+        initial={{ outcome: o ? (outcome as TechOutcome) : null, report: report ?? '' }}
+        onCancel={() => setEditing(false)}
+        onSaved={() => { setEditing(false); setSaved(true) }}
+      />
+    )
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-gray-900">{o ? `${o.icon} ${o.label}` : 'Retour enregistré'}</p>
+      {at && <p className="text-xs text-gray-500">Le {at}{by ? ` par ${by}` : ''}</p>}
+      {report && <p className="whitespace-pre-wrap text-sm text-gray-800">{report}</p>}
+      <TechPhotos caseId={caseId} photos={photos} editable={false} endpoint={endpoint} />
+      {saved && <p className="text-sm text-green-700">✓ Retour modifié.</p>}
+      {editable && <Button type="button" size="sm" variant="secondary" onClick={() => { setSaved(false); setEditing(true) }}>✏️ Modifier le retour</Button>}
     </div>
   )
 }

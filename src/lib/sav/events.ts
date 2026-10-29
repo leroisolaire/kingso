@@ -42,6 +42,7 @@ export const EVENT_LABELS: Record<string, string> = {
   TECH_LINK_SENT: 'Lien d’intervention envoyé',
   TECH_REPORT_DUE: 'Intervention passée : retour technicien attendu',
   TECH_REPORT: 'Retour technicien',
+  TECH_REPORT_EDITED: 'Retour technicien modifié',
   PHOTOS_ADDED: 'Photos ajoutées',
   CLIENT_PHOTOS: 'Photos envoyées par le client',
   CLIENT_INFO: 'Le client a complété son dossier',

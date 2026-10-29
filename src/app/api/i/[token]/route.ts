@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { addTechPhoto, removeTechPhoto, saveTechReport } from '@/lib/sav/techReport'
+import { addTechPhoto, removeTechPhoto, saveTechReport, updateTechReport } from '@/lib/sav/techReport'
 import { getInterventionByToken } from '@/lib/sav/technicians'
 
 export const maxDuration = 60
 
-/** Retour d'intervention depuis le lien personnel d'un poseur (sans compte) : photos et compte rendu. */
+/**
+ * Retour d'intervention depuis le lien personnel d'un intervenant : photos et compte rendu, puis modification du
+ * retour tant que le lien est valable (7 jours après le retour).
+ */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const c = await getInterventionByToken(token)
   if (!c) return NextResponse.json({ error: 'Ce lien n’est plus valide.' }, { status: 404 })
-  if (c.status !== 'SCHEDULED' && c.status !== 'TECH_REPORT') {
-    return NextResponse.json({ error: 'Le retour de cette intervention est déjà enregistré.' }, { status: 400 })
-  }
+  const toReport = c.status === 'SCHEDULED' || c.status === 'TECH_REPORT'
+  if (!toReport && !c.techReportAt) return NextResponse.json({ error: 'Cette intervention n’est plus à faire.' }, { status: 400 })
   const body = await request.json().catch(() => ({}))
-  const author = `${c.technician!.name} (poseur)`
+  const author = `${c.technician!.name}${c.technician!.kind === 'POSEUR' ? ' (poseur)' : ''}`
   try {
     switch (body.action) {
       case 'tech_photo':
@@ -22,7 +24,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         await removeTechPhoto(c.id, body.path)
         return NextResponse.json({ ok: true })
       case 'tech_report':
+        if (!toReport) throw new Error('Le retour est déjà enregistré : modifiez-le.')
         await saveTechReport(c.id, body.outcome, body.report, author)
+        return NextResponse.json({ ok: true })
+      case 'tech_report_edit':
+        await updateTechReport(c.id, body.outcome, body.report, author)
         return NextResponse.json({ ok: true })
       default:
         throw new Error('Action inconnue.')

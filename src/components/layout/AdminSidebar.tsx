@@ -12,6 +12,7 @@ const navItems = [
   { href: '/admin/sav', label: 'Espace SAV', icon: '☎' },
   { href: '/admin/sav/planning', label: 'Planning', icon: '▤' },
   { href: '/admin/sav/intervenants', label: 'Intervenants', icon: '⚒' },
+  { href: '/admin/interventions', label: 'Mes interventions', icon: '🛠' },
   { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },

@@ -45,6 +45,8 @@ const RULES: Rule[] = [
   // Fiches intervenants (techniciens SAV, poseurs) : gérées par le SAV et le planning
   { prefix: '/admin/sav/intervenants', roles: ['SAV', 'PLANNING'] },
   { prefix: '/api/sav/technicians', roles: ['SAV', 'PLANNING'] },
+  // Liste des interventions d'un technicien (page pour téléphone)
+  { prefix: '/admin/interventions', roles: ['SAV', 'PLANNING', 'TECHNICIAN'] },
   { prefix: '/admin/sav', roles: ['SAV', 'PLANNING', 'TECHNICIAN'] },
   { prefix: '/api/sav', roles: ['SAV', 'PLANNING', 'TECHNICIAN'] },
   { prefix: '/admin/escalations', roles: ['SAV', 'TECHNICIAN'] },
@@ -61,6 +63,8 @@ export function canAccess(roles: readonly string[], pathname: string, method = '
 /** Page d'accueil du back-office selon les rôles. */
 export function homeFor(roles: readonly string[]): string {
   if (roles.includes('SUPER_ADMIN')) return '/admin'
+  // Technicien seulement : directement sa liste d'interventions
+  if (roles.includes('TECHNICIAN') && !roles.includes('SAV') && !roles.includes('PLANNING')) return '/admin/interventions'
   if (roles.includes('SAV') || roles.includes('PLANNING') || roles.includes('TECHNICIAN')) return '/admin/sav'
   return '/admin/login'
 }

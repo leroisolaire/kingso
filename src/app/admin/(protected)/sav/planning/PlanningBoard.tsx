@@ -473,7 +473,7 @@ function CasePanel({ c, technicians, defaultMinutes, defaultDay, busy, onClose, 
                 {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}{t.kind === 'POSEUR' ? ' (poseur)' : ''}</option>)}
               </select>
             </label>
-            <TechnicianSuggestions caseId={c.id} selected={tech} onPick={setTech} disabled={busy} />
+            <TechnicianSuggestions caseId={c.id} selected={tech} onPick={setTech} disabled={busy} day={day} />
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" size="sm" onClick={save} loading={busy} disabled={busy || !day || !time || !changed}>
                 {c.start ? 'Enregistrer' : 'Planifier'}

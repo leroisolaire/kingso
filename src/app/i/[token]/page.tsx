@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
-import { TechReportForm } from '@/app/admin/(protected)/sav/[id]/TechReport'
+import Link from 'next/link'
+import { TechReportForm, TechReportView } from '@/app/admin/(protected)/sav/[id]/TechReport'
+import { getSession } from '@/lib/auth/dal'
 import { formatPhone } from '@/lib/sav/phone'
 import { DIFFICULTY_LABELS, URGENCY_LABELS } from '@/lib/sav/rating'
 import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
-import { TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
 import { getInterventionByToken } from '@/lib/sav/technicians'
 import { getSignedUrls } from '@/lib/storage/attachments'
 
@@ -38,12 +39,15 @@ export default async function InterventionPage({ params }: { params: Promise<{ t
   const phone = formatPhone(c.callbackPhone || c.phoneKey)
   const place = [c.address, [c.postalCode, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')
   const canReport = c.status === 'SCHEDULED' || c.status === 'TECH_REPORT'
-  const outcome = c.techOutcome ? TECH_OUTCOMES[c.techOutcome as TechOutcome] : null
+  const techPhotos = c.techPhotos.map((path) => ({ path, url: urls[path] ?? null }))
+  // Technicien connecté au back-office : retour à sa liste d'interventions
+  const session = await getSession()
 
   return (
     <main className="min-h-dvh bg-[#f7f6f4] px-4 py-5 text-gray-900">
       <div className="mx-auto max-w-lg space-y-3">
         <header>
+          {session && <Link href="/admin/interventions" className="mb-2 inline-block text-sm font-medium text-sky-700">← Mes interventions</Link>}
           <p className="text-xs font-semibold uppercase tracking-wide text-[#e73e11]">Le Roi Solaire · SAV</p>
           <h1 className="text-xl font-bold">Intervention n° {c.number}</h1>
           <p className="text-sm text-gray-500">Pour {c.technician!.name}</p>
@@ -97,13 +101,20 @@ export default async function InterventionPage({ params }: { params: Promise<{ t
         )}
 
         {canReport ? (
-          <TechReportForm caseId={c.id} endpoint={`/api/i/${token}`} photos={c.techPhotos.map((path) => ({ path, url: urls[path] ?? null }))} />
+          <TechReportForm caseId={c.id} endpoint={`/api/i/${token}`} photos={techPhotos} />
         ) : (
           <Section title="Retour d'intervention">
-            <p className="font-semibold">{outcome ? `${outcome.icon} ${outcome.label}` : 'Enregistré'}</p>
-            {c.techReportAt && <p className="text-xs text-gray-500">Le {formatParisDate(c.techReportAt, true)}{c.techReportBy ? ` par ${c.techReportBy}` : ''}</p>}
-            {c.techReport && <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{c.techReport}</p>}
-            <p className="mt-2 text-sm text-gray-500">Merci ! Le SAV a bien reçu votre retour.</p>
+            <TechReportView
+              caseId={c.id}
+              endpoint={`/api/i/${token}`}
+              outcome={c.techOutcome}
+              report={c.techReport}
+              at={c.techReportAt ? formatParisDate(c.techReportAt, true) : null}
+              by={c.techReportBy}
+              photos={techPhotos}
+              editable={Boolean(c.techReportAt)}
+            />
+            <p className="mt-3 text-xs text-gray-500">Merci ! Le SAV a bien reçu votre retour. Vous pouvez le modifier pendant 7 jours.</p>
           </Section>
         )}
         <p className="pb-4 text-center text-xs text-gray-400">Lien personnel : ne le transférez pas. Il ne marche plus une semaine après l&apos;intervention.</p>
