@@ -11,8 +11,9 @@ export interface CasePhoto { path: string; url: string | null }
 
 const inputCls = 'w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500'
 
-async function postAction(caseId: string, payload: Record<string, unknown>) {
-  const res = await fetch(`/api/sav/cases/${caseId}/actions`, {
+/** Envoi d'une action : route du dossier (équipe), ou `endpoint` (lien personnel d'un poseur). */
+async function postAction(caseId: string, payload: Record<string, unknown>, endpoint?: string) {
+  const res = await fetch(endpoint ?? `/api/sav/cases/${caseId}/actions`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   })
   const json = await res.json().catch(() => ({}))
@@ -24,8 +25,9 @@ async function postAction(caseId: string, payload: Record<string, unknown>) {
  * Photos d'un dossier (intervention, ou demande du client) : prises avec le téléphone ou choisies, compressées
  * avant l'envoi, une par une. `canAdd` à false : seulement l'affichage (et la suppression si `editable`).
  */
-export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction = 'tech_photo', removeAction = 'tech_photo_remove', addLabel = '📷 Prendre une photo' }: {
+export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction = 'tech_photo', removeAction = 'tech_photo_remove', addLabel = '📷 Prendre une photo', endpoint }: {
   caseId: string
+  endpoint?: string
   photos: CasePhoto[]
   editable: boolean
   canAdd?: boolean
@@ -47,7 +49,7 @@ export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction 
     for (const file of list) {
       try {
         const image = await prepareImage(file)
-        await postAction(caseId, { action: addAction, photo: { mediaType: image.mediaType, data: image.data } })
+        await postAction(caseId, { action: addAction, photo: { mediaType: image.mediaType, data: image.data } }, endpoint)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Photo non envoyée.')
       }
@@ -59,7 +61,7 @@ export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction 
   const remove = async (path: string) => {
     if (!confirm('Supprimer cette photo ?')) return
     try {
-      await postAction(caseId, { action: removeAction, path })
+      await postAction(caseId, { action: removeAction, path }, endpoint)
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Photo non supprimée.')
@@ -110,7 +112,7 @@ export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction 
 }
 
 /** Retour du technicien après l'intervention : issue, compte rendu (dicté ou tapé) et photos. */
-export function TechReportForm({ caseId, photos, onCancel }: { caseId: string; photos: CasePhoto[]; onCancel?: () => void }) {
+export function TechReportForm({ caseId, photos, onCancel, endpoint }: { caseId: string; photos: CasePhoto[]; onCancel?: () => void; endpoint?: string }) {
   const router = useRouter()
   const [outcome, setOutcome] = useState<TechOutcome | null>(null)
   const [report, setReport] = useState('')
@@ -122,7 +124,7 @@ export function TechReportForm({ caseId, photos, onCancel }: { caseId: string; p
     setBusy(true)
     setError(null)
     try {
-      await postAction(caseId, { action: 'tech_report', outcome, report })
+      await postAction(caseId, { action: 'tech_report', outcome, report }, endpoint)
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Retour non enregistré.')
@@ -153,7 +155,7 @@ export function TechReportForm({ caseId, photos, onCancel }: { caseId: string; p
         className={`${inputCls} min-h-36 resize-y bg-white`}
       />
       <DictationButton value={report} onChange={setReport} disabled={busy} />
-      <TechPhotos caseId={caseId} photos={photos} editable />
+      <TechPhotos caseId={caseId} photos={photos} editable endpoint={endpoint} />
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex flex-wrap gap-2">
         <Button type="button" onClick={submit} loading={busy} disabled={!outcome || busy}>Enregistrer le retour</Button>

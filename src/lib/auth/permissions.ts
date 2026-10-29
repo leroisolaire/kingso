@@ -42,6 +42,9 @@ const RULES: Rule[] = [
   { prefix: '/api/sav/cases', roles: [], methods: ['DELETE'] },
   { prefix: '/api/sav/clients', roles: ['SAV', 'PLANNING', 'TECHNICIAN'], methods: ['GET'] },
   { prefix: '/api/sav/clients', roles: [] },
+  // Fiches intervenants (techniciens SAV, poseurs) : gérées par le SAV et le planning
+  { prefix: '/admin/sav/intervenants', roles: ['SAV', 'PLANNING'] },
+  { prefix: '/api/sav/technicians', roles: ['SAV', 'PLANNING'] },
   { prefix: '/admin/sav', roles: ['SAV', 'PLANNING', 'TECHNICIAN'] },
   { prefix: '/api/sav', roles: ['SAV', 'PLANNING', 'TECHNICIAN'] },
   { prefix: '/admin/escalations', roles: ['SAV', 'TECHNICIAN'] },

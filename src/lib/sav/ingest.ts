@@ -15,6 +15,7 @@ import { formatParisDate, plannedSendTime } from './schedule'
 import { cancelCaseEmail, sendCaseEmail } from './send'
 import { getSavSettings } from './settings'
 import { CATEGORY_LABELS } from './status'
+import { URGENT_FROM } from './rating'
 import { getTemplate, TEMPLATE_LABELS, type TemplateKey } from './templates'
 
 // Réception d'une demande SAV (message du répondeur ; plus tard la même fonction sera appelée par Gmail) :
@@ -103,6 +104,8 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
       where: { id: open.id },
       data: {
         urgent: true,
+        // Relance : au moins « urgent » (4)
+        urgency: Math.max(open.urgency ?? 0, analysis.urgency, URGENT_FROM),
         urgentReason: analysis.urgentReason || open.urgentReason || 'Relance du client',
         noHeating: open.noHeating || analysis.noHeating,
         summary: `${open.summary}\nRelance du ${formatParisDate(receivedAt, true)} : ${analysis.summary}`,
@@ -130,7 +133,8 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
       source: input.source,
       status,
       category,
-      urgent: analysis.urgent || followUp,
+      urgency: followUp ? Math.max(analysis.urgency, URGENT_FROM) : analysis.urgency,
+      urgent: analysis.urgent || followUp || analysis.urgency >= URGENT_FROM,
       urgentReason: analysis.urgentReason || (followUp ? 'Le client dit avoir déjà appelé' : null),
       phoneKey,
       callbackPhone: input.dictatedPhone ?? input.callerPhone ?? null,
@@ -161,7 +165,7 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
   const from = input.callerPhone ? ` de ${formatPhone(input.callerPhone)}` : ''
   await addSavEvent(created.id, 'RECEIVED', `${formatParisDate(receivedAt, true)}${from}`, input.author)
   await addSavEvent(created.id, 'ANALYZED',
-    `${CATEGORY_LABELS[category]}${analysis.urgent ? ` — urgent : ${analysis.urgentReason}` : ''}${followUp ? ' — le client dit avoir déjà appelé' : ''}`)
+    `${CATEGORY_LABELS[category]} — urgence ${created.urgency ?? analysis.urgency}/5${analysis.urgent ? ` — urgent : ${analysis.urgentReason}` : ''}${followUp ? ' — le client dit avoir déjà appelé' : ''}`)
   await addSavEvent(created.id, client ? 'CLIENT_FOUND' : 'CLIENT_NOT_FOUND', match)
 
   if (key) await prepareEmail(created.id, key, input.author)
@@ -200,7 +204,8 @@ export async function caseFromChatEscalation(params: {
       source: 'CHAT',
       status: 'TO_CALL',
       category: (analysis?.category ?? 'UNCLEAR') as SavCategory,
-      urgent: analysis?.urgent ?? false,
+      urgency: analysis?.urgency ?? null,
+      urgent: (analysis?.urgent ?? false) || (analysis?.urgency ?? 0) >= URGENT_FROM,
       urgentReason: analysis?.urgentReason || null,
       phoneKey,
       callbackPhone: phoneKey,
@@ -253,6 +258,9 @@ export async function completeCaseFromPhotoNote(caseId: string, note: string) {
   if (Object.keys(patch).length) await db.savCase.update({ where: { id: caseId }, data: patch })
 }
 
+/** Début du message créé pour les photos envoyées par le client dans son chat (repérage dans le dossier). */
+export const CHAT_COPY_PREFIX = 'Ajouté par le client dans son chat Kingso'
+
 /**
  * Photos envoyées par le client dans son chat personnel : copiées dans le dossier (nouveau message), pour que
  * l'équipe les retrouve avec les autres, et ce que Kingso y lit complète le dossier.
@@ -264,7 +272,7 @@ export async function addClientChatPhotos(caseId: string, photos: ImageInput[], 
     data: {
       caseId,
       source: 'CHAT',
-      text: `Ajouté par le client dans son chat Kingso${text ? ` : ${text.slice(0, 2000)}` : ' (photos)'}`,
+      text: `${CHAT_COPY_PREFIX}${text ? ` : ${text.slice(0, 2000)}` : ' (photos)'}`,
       photoNote: note || null,
       receivedAt: new Date(),
     },

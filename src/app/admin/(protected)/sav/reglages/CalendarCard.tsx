@@ -14,10 +14,12 @@ export interface CalendarInfo {
   durationMinutes: number
   connectedAt: string | null
   connectedBy: string | null
+  chantierCalendarId: string | null
+  chantierCalendarName: string | null
   message: string | null
 }
 
-interface CalendarOption { id: string; name: string; primary: boolean }
+interface CalendarOption { id: string; name: string; primary: boolean; writable: boolean }
 
 
 /** Agenda Google du planning des interventions (bouton « Ajouter au planning » des dossiers). */
@@ -79,6 +81,19 @@ export default function CalendarCard({ c }: { c: CalendarInfo }) {
                 className="mt-1 block rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
               >
                 {!calendars && <option value={c.calendarId ?? ''}>{c.calendarName ?? 'Chargement…'}</option>}
+                {calendars?.filter((cal) => cal.writable).map((cal) => <option key={cal.id} value={cal.id}>{cal.name}{cal.primary ? ' (agenda principal)' : ''}</option>)}
+              </select>
+            </label>
+            <label className="block text-xs text-gray-600">
+              Agenda des chantiers
+              <select
+                value={c.chantierCalendarId ?? ''}
+                disabled={!calendars || busy !== null}
+                onChange={(e) => post('chantier', { action: 'settings', chantierCalendarId: e.target.value }, e.target.value ? 'Agenda des chantiers enregistré.' : 'Agenda des chantiers retiré.')}
+                className="mt-1 block rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
+              >
+                <option value="">Aucun</option>
+                {!calendars && c.chantierCalendarId && <option value={c.chantierCalendarId}>{c.chantierCalendarName ?? 'Chargement…'}</option>}
                 {calendars?.map((cal) => <option key={cal.id} value={cal.id}>{cal.name}{cal.primary ? ' (agenda principal)' : ''}</option>)}
               </select>
             </label>
@@ -96,6 +111,11 @@ export default function CalendarCard({ c }: { c: CalendarInfo }) {
           </div>
           <p className="text-xs text-gray-500">
             Conseil : créez dans Google Agenda un agenda dédié (par ex. « Planning SAV »), puis rechargez cette page pour le choisir ici.
+          </p>
+          <p className="text-xs text-gray-500">
+            Agenda des chantiers : Kingso le lit seulement (il n&apos;y écrit jamais). Quand vous planifiez un dossier, il signale les
+            poseurs qui sont sur un chantier proche, grâce à leur repère (ex. « MAR ») dans le titre des événements et à l&apos;adresse
+            (champ Lieu, sinon description). Le compte connecté doit avoir accès à cet agenda.
           </p>
         </div>
       ) : (

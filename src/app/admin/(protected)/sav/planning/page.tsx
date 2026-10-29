@@ -43,7 +43,7 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
   const caseSelect = {
     id: true, number: true, status: true, customerName: true, phoneKey: true, callbackPhone: true, address: true, postalCode: true,
     city: true, summary: true, urgent: true, category: true, appointmentAt: true, appointmentMinutes: true, technicianId: true,
-    planningEventId: true, equipment: true,
+    planningEventId: true, equipment: true, urgency: true, difficulty: true,
   } as const
   const [scheduled, toSchedule, technicians, minutes, connected] = await Promise.all([
     db.savCase.findMany({
@@ -54,7 +54,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
     db.savCase.findMany({
       where: { OR: [{ status: 'TO_SCHEDULE' }, { status: 'SCHEDULED', appointmentAt: null }] },
       select: caseSelect,
-      orderBy: [{ urgent: 'desc' }, { receivedAt: 'asc' }],
+      // Les plus urgents d'abord (note de 1 à 5), puis les plus anciens
+      orderBy: [{ urgency: { sort: 'desc', nulls: 'last' } }, { urgent: 'desc' }, { receivedAt: 'asc' }],
       take: 100,
     }),
     getTechnicians(),
@@ -84,6 +85,8 @@ export default async function PlanningPage({ searchParams }: { searchParams: Pro
     summary: c.summary,
     equipment: c.equipment ?? '',
     urgent: c.urgent,
+    urgency: c.urgency,
+    difficulty: c.difficulty,
     start: c.appointmentAt?.toISOString() ?? null,
     minutes: c.appointmentMinutes ?? minutes,
     technicianId: c.technicianId,

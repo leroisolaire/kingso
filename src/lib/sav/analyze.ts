@@ -27,6 +27,8 @@ export interface MessageAnalysis {
   category: Category
   urgent: boolean
   urgentReason: string
+  /** Urgence de 1 à 5 */
+  urgency: number
   mentionsPreviousCalls: boolean
 }
 
@@ -34,7 +36,7 @@ const SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['customerName', 'city', 'postalCode', 'address', 'product', 'equipment', 'summary', 'problemForEmail',
-    'clientQuestion', 'errorCode', 'noHeating', 'category', 'urgent', 'urgentReason', 'mentionsPreviousCalls'],
+    'clientQuestion', 'errorCode', 'noHeating', 'category', 'urgent', 'urgentReason', 'urgency', 'mentionsPreviousCalls'],
   properties: {
     customerName: { type: 'string', description: 'Nom tel que compris, avec Madame/Monsieur si indiqué (ex. « Madame Martin ») ; chaîne vide si inconnu' },
     city: { type: 'string', description: 'Commune, orthographe corrigée si évidente ; vide si inconnue' },
@@ -49,6 +51,7 @@ const SCHEMA = {
     noHeating: { type: 'boolean', description: 'Plus de chauffage ou plus d\'eau chaude' },
     category: { type: 'string', enum: CATEGORIES },
     urgent: { type: 'boolean' },
+    urgency: { type: 'integer', enum: [1, 2, 3, 4, 5], description: 'Urgence de 1 à 5 (voir le barème)' },
     urgentReason: { type: 'string', description: 'Raison courte si urgent (ex. « personne âgée sans chauffage », « fuite d\'eau »), vide sinon' },
     mentionsPreviousCalls: { type: 'boolean', description: 'Le client dit avoir DÉJÀ appelé ou laissé un message pour CE problème et attendre toujours une réponse (relance). Faux si le client évoque seulement une aide reçue une autre fois ou une procédure donnée auparavant.' },
   },
@@ -67,6 +70,13 @@ Catégorie :
 S'il y a une panne ET une demande administrative, choisis la catégorie de la panne.
 
 Urgent si : plus de chauffage ou d'eau chaude avec une personne fragile (âgée, malade, bébé ou jeune enfant) ; fuite d'eau importante ; risque électrique ; client qui dit avoir déjà appelé plusieurs fois sans réponse.
+
+Urgence de 1 à 5 :
+1 = peut attendre : question, entretien, contrat, facture, rien n'est arrêté.
+2 = peu urgent : gêne légère (bruit inhabituel, code affiché sans perte de chauffage ni d'eau chaude, panneaux solaires qui produisent moins).
+3 = à traiter rapidement : panne partielle (chauffage faible, appoint qui prend le relais, code qui revient), production solaire arrêtée.
+4 = urgent : plus de chauffage ou plus d'eau chaude, fuite d'eau, client qui dit avoir déjà appelé pour ce problème.
+5 = très urgent : personne fragile sans chauffage ou sans eau chaude, fuite importante, risque électrique ou odeur de brûlé.
 
 Message :
 """
@@ -96,5 +106,6 @@ export async function analyzeMessage(text: string): Promise<MessageAnalysis> {
     clientQuestion: clean(a.clientQuestion),
     errorCode: clean(a.errorCode),
     urgentReason: a.urgent ? clean(a.urgentReason) : '',
+    urgency: Math.min(5, Math.max(1, Math.round(Number(a.urgency) || 2))),
   }
 }

@@ -9,6 +9,9 @@ import DictationButton from './DictationButton'
 import DurationSelect from '../DurationSelect'
 import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
 import { TechPhotos, TechReportForm, type CasePhoto } from './TechReport'
+import PhotoGallery, { type GalleryPhoto } from './PhotoGallery'
+import CaseRating from '../CaseRating'
+import TechnicianSuggestions from '../TechnicianSuggestions'
 import type { SavCategory, SavStatus } from '@prisma/client'
 
 interface CaseData {
@@ -25,6 +28,8 @@ interface CaseData {
   category: SavCategory
   urgent: boolean
   urgentReason: string
+  urgency: number | null
+  difficulty: number | null
   noHeating: boolean
   receivedAt: string
   phone: string
@@ -54,7 +59,9 @@ interface CaseData {
   planningLink: string | null
   messages: { id: string; source: string; text: string; at: string; phone: string; durationSec: number | null; photos: CasePhoto[]; photoNote: string | null }[]
   events: { id: string; label: string; kind: string; detail: string | null; author: string | null; at: string }[]
-  conversation: { id: string; user: string; kingso: string; at: string; fromCase: boolean }[]
+  /** Toutes les photos du dossier, des plus récentes aux plus anciennes */
+  gallery: GalleryPhoto[]
+  conversation: { id: string; user: string; kingso: string; at: string; fromCase: boolean; photos: CasePhoto[]; photoNote: string | null }[]
 }
 
 interface ClientOption {
@@ -80,9 +87,11 @@ interface Props {
   suggestions: ClientOption[]
   kingso: { tone: Presence['tone']; label: string; detail: string } | null
   calendarConnected: boolean
-  technicians: { id: string; name: string }[]
+  technicians: TechnicianOption[]
   canDelete: boolean
 }
+
+interface TechnicianOption { id: string; name: string; kind: 'SAV' | 'POSEUR'; phone: string }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
 
@@ -189,7 +198,8 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
   const [minutes, setMinutes] = useState(data.appointmentMinutes)
   const [techId, setTechId] = useState(data.technicianId ?? '')
   const [reporting, setReporting] = useState(false)
-  const technicianName = technicians.find((t) => t.id === data.technicianId)?.name
+  const assignedTech = technicians.find((t) => t.id === data.technicianId)
+  const technicianName = assignedTech?.name
 
   const call = async (key: string, url: string, payload: unknown, method = 'POST') => {
     setBusy(key)
@@ -309,6 +319,13 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
             </div>
           </Card>
 
+          {/* Photos : toutes au même endroit (chat du client, messages, technicien) */}
+          {data.gallery.length > 0 && (
+            <Card title={`📷 Photos du dossier (${data.gallery.length})`}>
+              <PhotoGallery photos={data.gallery} />
+            </Card>
+          )}
+
           {/* Email au client */}
           <Card
             title="Email au client"
@@ -426,7 +443,20 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                         <strong>Message laissé au SAV</strong> <span className="text-xs">(transmis par Kingso, non affiché au client)</span> : {h.user}
                       </p>
                     ) : (
-                      <p className="rounded-lg bg-orange-50 px-3 py-2 whitespace-pre-wrap"><strong>Client :</strong> {h.user}</p>
+                      <div className="rounded-lg bg-orange-50 px-3 py-2">
+                        <p className="whitespace-pre-wrap"><strong>Client :</strong> {h.user || (h.photos.length ? <span className="text-gray-500">(photo)</span> : '')}</p>
+                        {h.photos.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {h.photos.map((p) => p.url ? (
+                              <a key={p.path} href={p.url} target="_blank" rel="noreferrer">
+                                {/* eslint-disable-next-line @next/next/no-img-element -- URL signée temporaire du stockage privé */}
+                                <img src={p.url} alt="Photo du client" className="h-20 w-20 rounded-lg object-cover ring-1 ring-orange-200" />
+                              </a>
+                            ) : null)}
+                          </div>
+                        )}
+                        {h.photoNote && <p className="mt-1 text-xs text-gray-500"><strong>Lu sur la photo :</strong> {h.photoNote}</p>}
+                      </div>
                     )}
                     <p className="rounded-lg bg-gray-50 px-3 py-2 whitespace-pre-wrap"><strong>Kingso :</strong> {h.kingso}</p>
                   </div>
@@ -437,6 +467,11 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
         </div>
 
         <div className="space-y-4">
+          {/* Urgence (proposée par Kingso) et difficulté : modifiables par tous */}
+          <Card title="Urgence et difficulté">
+            <CaseRating caseId={data.id} urgency={data.urgency} difficulty={data.difficulty} />
+          </Card>
+
           {/* Actions selon l'étape */}
           {open && (
             <Card title="Suivi">
@@ -473,9 +508,10 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                     </label>
                   </div>
                   <label className="flex items-center gap-2 text-sm text-gray-600">
-                    Technicien
+                    Intervenant
                     <TechnicianSelect technicians={technicians} value={techId} onChange={setTechId} />
                   </label>
+                  <TechnicianSuggestions caseId={data.id} selected={techId} onPick={setTechId} disabled={busy !== null} />
                   <Button type="button" size="sm" onClick={() => action('schedule', { appointmentAt: new Date(appointment).toISOString(), durationMinutes: minutes, technicianId: techId || null }).then((r) => r && setReschedule(false))} disabled={!appointment || busy !== null}>
                     Fixer le rendez-vous
                   </Button>
@@ -488,7 +524,7 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                     <span aria-hidden="true">📅</span> Intervention {data.appointmentAt}
                   </p>
                   <label className="flex items-center gap-2 text-sm text-gray-600">
-                    Technicien
+                    Intervenant
                     <TechnicianSelect
                       technicians={technicians}
                       value={data.technicianId ?? ''}
@@ -496,6 +532,12 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                       disabled={busy !== null}
                     />
                   </label>
+                  {!data.technicianId && (
+                    <TechnicianSuggestions caseId={data.id} selected="" onPick={(id) => action('assign', { technicianId: id })} disabled={busy !== null} />
+                  )}
+                  {assignedTech?.kind === 'POSEUR' && (
+                    <TechnicianLink caseId={data.id} technician={assignedTech} disabled={busy !== null} onInfo={setInfo} onError={setError} />
+                  )}
                   {data.planningLink ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                       <span className="font-semibold text-green-700">✓ Ajouté au planning</span>
@@ -516,7 +558,7 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" size="sm" onClick={() => setReporting(true)} disabled={busy !== null}>Faire le retour d&apos;intervention</Button>
-                      <Button type="button" size="sm" variant="ghost" onClick={() => { setAppointment(toLocalInput(data.appointmentIso)); setMinutes(data.appointmentMinutes); setTechId(data.technicianId ?? ''); setReschedule(true) }}>Changer la date, la durée ou le technicien</Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => { setAppointment(toLocalInput(data.appointmentIso)); setMinutes(data.appointmentMinutes); setTechId(data.technicianId ?? ''); setReschedule(true) }}>Changer la date, la durée ou l&apos;intervenant</Button>
                     </div>
                   )}
                 </div>
@@ -663,8 +705,59 @@ export default function CaseView({ data, link, paused, sms, templates, assistant
   )
 }
 
+/** Lien personnel de l'intervention pour un poseur (sans compte) : à copier, ou envoyé par SMS sur clic. */
+function TechnicianLink({ caseId, technician, disabled, onInfo, onError }: {
+  caseId: string
+  technician: TechnicianOption
+  disabled: boolean
+  onInfo: (text: string) => void
+  onError: (text: string) => void
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const [link, setLink] = useState<string | null>(null)
+  const post = async (key: string) => {
+    setBusy(key)
+    const res = await fetch(`/api/sav/cases/${caseId}/actions`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: key }),
+    })
+    const json = await res.json().catch(() => ({}))
+    setBusy(null)
+    if (!res.ok) { onError(json.error ?? `Erreur ${res.status}`); return null }
+    return json
+  }
+  const copy = async () => {
+    const json = await post('tech_link')
+    if (!json?.link) return
+    setLink(json.link)
+    await navigator.clipboard.writeText(json.link).then(
+      () => onInfo(`Lien copié : envoyez-le à ${technician.name} (SMS, WhatsApp…).`),
+      () => onInfo('Lien affiché ci-dessous : copiez-le à la main.'),
+    )
+  }
+  const sms = async () => {
+    if (!confirm(`Envoyer par SMS à ${technician.name} (${technician.phone}) le lien de cette intervention ?`)) return
+    const json = await post('tech_link_sms')
+    if (json?.phone) onInfo(`Lien de l'intervention envoyé par SMS à ${technician.name} (${json.phone}).`)
+  }
+  return (
+    <div className="space-y-1.5 rounded-lg bg-orange-50 px-3 py-2 ring-1 ring-orange-200">
+      <p className="text-sm text-orange-900">
+        <strong>{technician.name}</strong> est poseur (sans compte) : envoyez-lui le lien de l&apos;intervention. Il y voit ce dossier
+        seulement et fait son retour depuis son téléphone.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="secondary" onClick={copy} loading={busy === 'tech_link'} disabled={disabled || busy !== null}>Copier le lien</Button>
+        {technician.phone
+          ? <Button type="button" size="sm" variant="secondary" onClick={sms} loading={busy === 'tech_link_sms'} disabled={disabled || busy !== null}>Envoyer par SMS au {technician.phone}</Button>
+          : <span className="self-center text-xs text-gray-500">Pas de mobile sur sa fiche (Intervenants) pour l&apos;envoi par SMS.</span>}
+      </div>
+      {link && <p className="break-all text-xs text-gray-500">{link}</p>}
+    </div>
+  )
+}
+
 function TechnicianSelect({ technicians, value, onChange, disabled }: {
-  technicians: { id: string; name: string }[]
+  technicians: TechnicianOption[]
   value: string
   onChange: (id: string) => void
   disabled?: boolean
@@ -676,8 +769,8 @@ function TechnicianSelect({ technicians, value, onChange, disabled }: {
       disabled={disabled}
       className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900"
     >
-      <option value="">{technicians.length ? 'Aucun' : 'Aucun technicien (rôle à donner dans Utilisateurs)'}</option>
-      {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      <option value="">{technicians.length ? 'Aucun' : 'Aucun intervenant (à ajouter dans Intervenants)'}</option>
+      {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}{t.kind === 'POSEUR' ? ' (poseur)' : ''}</option>)}
     </select>
   )
 }

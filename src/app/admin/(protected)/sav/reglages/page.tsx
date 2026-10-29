@@ -56,6 +56,8 @@ export default async function SavSettingsPage({ searchParams }: { searchParams: 
           durationMinutes: calendar.durationMinutes ?? DEFAULT_DURATION_MINUTES,
           connectedAt: calendar.connectedAt ?? null,
           connectedBy: calendar.connectedBy ?? null,
+          chantierCalendarId: calendar.chantierCalendarId ?? null,
+          chantierCalendarName: calendar.chantierCalendarName ?? null,
           message: agendaMessage ?? null,
         }}
       />

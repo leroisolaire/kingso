@@ -59,7 +59,7 @@ function viewerWhere(viewer: Viewer): Prisma.SavEventWhereInput {
   const or: Prisma.SavEventWhereInput[] = []
   if (roles.includes('SUPER_ADMIN') || roles.includes('SAV')) or.push({ kind: { in: SAV_KINDS } })
   else if (roles.includes('PLANNING')) or.push({ kind: { in: PLANNING_KINDS } })
-  if (roles.includes('TECHNICIAN')) or.push({ kind: { in: TECHNICIAN_KINDS }, case: { technicianId: viewer.id } })
+  if (roles.includes('TECHNICIAN')) or.push({ kind: { in: TECHNICIAN_KINDS }, case: { technician: { userId: viewer.id } } })
   return {
     createdAt: { gte: new Date(Date.now() - WINDOW_DAYS * 24 * 3600_000) },
     AND: [

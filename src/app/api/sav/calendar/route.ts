@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/dal'
 import { disconnectCalendar, listCalendars, updateCalendarSettings } from '@/lib/sav/calendar'
 
-/** Agendas modifiables du compte connecté (pour choisir celui du planning). */
+/** Agendas du compte connecté (pour choisir celui du planning, modifiable, et celui des chantiers). */
 export async function GET() {
   if (!(await getSession())) return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 })
   try {
@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
       await updateCalendarSettings({
         calendarId: typeof body.calendarId === 'string' ? body.calendarId : undefined,
         durationMinutes: body.durationMinutes === undefined ? undefined : Number(body.durationMinutes),
+        // Agenda des chantiers : '' ou null pour n'en choisir aucun
+        chantierCalendarId: 'chantierCalendarId' in body ? (typeof body.chantierCalendarId === 'string' ? body.chantierCalendarId : null) : undefined,
       })
       return NextResponse.json({ ok: true })
     }

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db/client'
 import { isGoogleEmail, otherActiveSuperAdmins, parseRoles, passwordError, requireSuperAdmin } from '@/lib/auth/users'
+import { syncTechnicianForUser } from '@/lib/sav/technicians'
 
 /** Modifie un compte : nom, rôles, actif, mot de passe. Changer les rôles ou désactiver ferme ses sessions ouvertes. */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,6 +46,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
   const rolesChanged = data.roles && (data.roles.length !== user.roles.length || data.roles.some((r) => !user.roles.includes(r)))
   if (rolesChanged || data.active === false) data.sessionVersion = { increment: 1 }
-  await db.user.update({ where: { id }, data })
+  const updated = await db.user.update({ where: { id }, data })
+  // Rôle Technicien donné ou retiré, compte désactivé : sa fiche intervenant suit
+  if (data.roles || typeof data.active === 'boolean') await syncTechnicianForUser(updated)
   return NextResponse.json({ ok: true })
 }

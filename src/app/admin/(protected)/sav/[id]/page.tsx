@@ -9,6 +9,7 @@ import { caseLink } from '@/lib/sav/draft'
 import { EVENT_LABELS } from '@/lib/sav/events'
 import { formatPhone } from '@/lib/sav/phone'
 import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
+import { CHAT_COPY_PREFIX } from '@/lib/sav/ingest'
 import { getSavSettings } from '@/lib/sav/settings'
 import { smsPhoneOf } from '@/lib/sav/sms'
 import { fillSmsText } from '@/lib/sav/smsText'
@@ -72,6 +73,18 @@ export default async function SavCasePage({ params, searchParams }: {
     getSignedUrls([...c.techPhotos, ...c.messages.flatMap((m) => m.photos)]).catch(() => ({} as Record<string, string>)),
   ])
 
+  // Photos du chat personnel (historique de la conversation) : les plus anciennes n'ont pas été copiées dans le dossier
+  const chatUrls = await getSignedUrls(conversation.flatMap((h) => h.attachments)).catch(() => ({} as Record<string, string>))
+  // Toutes les photos du dossier au même endroit, des plus récentes aux plus anciennes. Les copies des photos du
+  // chat (messages « Ajouté par le client dans son chat ») ne sont pas répétées : elles viennent de la conversation.
+  const gallery = [
+    ...conversation.flatMap((h) => h.attachments.map((path) => ({ path, url: chatUrls[path] ?? null, label: 'Envoyée par le client dans le chat', date: h.createdAt }))),
+    ...c.messages.filter((m) => !m.text.startsWith(CHAT_COPY_PREFIX)).flatMap((m) => m.photos.map((path) => ({
+      path, url: photoUrls[path] ?? null, label: m.source === 'MANUAL' ? 'Jointe par l’équipe' : 'Jointe au message du client', date: m.receivedAt,
+    }))),
+    ...c.techPhotos.map((path) => ({ path, url: photoUrls[path] ?? null, label: 'Prise par le technicien', date: c.techReportAt ?? c.updatedAt })),
+  ].sort((a, b) => b.date.getTime() - a.date.getTime()).map(({ date, ...p }) => ({ ...p, at: formatParisDate(date, true) }))
+
   // SMS d'accusé de réception : envoyé, ou dernière tentative en erreur
   const smsSent = c.events.find((e) => e.kind === 'SMS_SENT')
   const lastSms = c.events.find((e) => e.kind === 'SMS_SENT' || e.kind === 'SMS_ERROR')
@@ -111,7 +124,7 @@ export default async function SavCasePage({ params, searchParams }: {
         assistants={assistants}
         kingso={kingso}
         calendarConnected={calendarConnected}
-        technicians={technicians}
+        technicians={technicians.map((t) => ({ id: t.id, name: t.name, kind: t.kind, phone: formatPhone(t.phone) }))}
         canDelete={user.roles.includes('SUPER_ADMIN')}
         suggestions={suggestions.map((s) => ({ ...s, phones: s.phones.map(formatPhone) }))}
         data={{
@@ -121,6 +134,8 @@ export default async function SavCasePage({ params, searchParams }: {
           status: c.status,
           category: c.category,
           urgent: c.urgent,
+          urgency: c.urgency,
+          difficulty: c.difficulty,
           urgentReason: c.urgentReason ?? '',
           noHeating: c.noHeating,
           receivedAt: formatParisDate(c.receivedAt, true),
@@ -164,8 +179,12 @@ export default async function SavCasePage({ params, searchParams }: {
             id: e.id, label: EVENT_LABELS[e.kind] ?? e.kind, kind: e.kind, detail: e.detail,
             author: e.author, at: formatParisDate(e.createdAt, true),
           })),
+          gallery,
           conversation: conversation.map((h, i) => ({
-            id: h.id, user: h.userMessage, kingso: h.assistantMessage, at: formatParisDate(h.createdAt, true),
+            // Texte lu sur les photos (gardé pour Kingso) : affiché à part, sous les photos
+            id: h.id, user: h.userMessage.replace(/\n?\[Photo : [\s\S]*\]$/, ''), kingso: h.assistantMessage, at: formatParisDate(h.createdAt, true),
+            photos: h.attachments.map((path) => ({ path, url: chatUrls[path] ?? null })),
+            photoNote: h.userMessage.match(/\[Photo : ([\s\S]*)\]$/)?.[1] ?? null,
             // 1er message envoyé par Kingso à partir du message laissé au SAV (le client ne l'a pas écrit)
             fromCase: i === 0 && Boolean(c.clientQuestion) && h.userMessage.trim() === c.clientQuestion!.trim(),
           })),

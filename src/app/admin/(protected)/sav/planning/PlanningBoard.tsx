@@ -8,6 +8,9 @@ import Button from '@/components/ui/Button'
 import { durationLabel } from '@/lib/sav/duration'
 import { NO_TECH_COLOR, STATUS_LABELS, TECH_COLORS } from '@/lib/sav/status'
 import DurationSelect from '../DurationSelect'
+import CaseRating from '../CaseRating'
+import TechnicianSuggestions from '../TechnicianSuggestions'
+import { ratingShort } from '@/lib/sav/rating'
 
 export interface PlanningCase {
   id: string
@@ -20,6 +23,8 @@ export interface PlanningCase {
   summary: string
   equipment: string
   urgent: boolean
+  urgency: number | null
+  difficulty: number | null
   /** Début du rendez-vous (ISO), null pour un dossier à planifier */
   start: string | null
   minutes: number
@@ -28,6 +33,7 @@ export interface PlanningCase {
 }
 
 interface AgendaItem { id: string; title: string; start: string; end: string; allDay: boolean }
+interface TechnicianOption { id: string; name: string; kind: 'SAV' | 'POSEUR'; userId: string | null }
 interface Day { key: string; label: string; long: string }
 
 interface Props {
@@ -35,7 +41,7 @@ interface Props {
   today: string
   appointments: PlanningCase[]
   toSchedule: PlanningCase[]
-  technicians: { id: string; name: string }[]
+  technicians: TechnicianOption[]
   agenda: AgendaItem[]
   defaultMinutes: number
   currentUserId: string
@@ -102,7 +108,8 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
     return i === -1 ? NO_TECH_COLOR : TECH_COLORS[i % TECH_COLORS.length]
   }
   const techName = (id: string | null) => technicians.find((t) => t.id === id)?.name
-  const isTechnician = technicians.some((t) => t.id === currentUserId)
+  // Fiche intervenant du compte connecté (technicien SAV) : filtre « Mes interventions »
+  const myTechId = technicians.find((t) => t.userId === currentUserId)?.id ?? null
   const visible = (c: PlanningCase) => filter === 'all' || (filter === 'none' ? !c.technicianId : c.technicianId === filter)
 
   const dayKeys = new Set(days.map((d) => d.key))
@@ -185,17 +192,17 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
       {/* Filtre par technicien */}
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
         <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>Tous</FilterChip>
-        {isTechnician && <FilterChip active={filter === currentUserId} onClick={() => setFilter(currentUserId)}>Mes interventions</FilterChip>}
+        {myTechId && <FilterChip active={filter === myTechId} onClick={() => setFilter(myTechId)}>Mes interventions</FilterChip>}
         {technicians.map((t) => (
           <FilterChip key={t.id} active={filter === t.id} onClick={() => setFilter(t.id)}>
-            <span className={`h-2.5 w-2.5 rounded-full ${colorOf(t.id).dot}`} /> {t.name}
+            <span className={`h-2.5 w-2.5 rounded-full ${colorOf(t.id).dot}`} /> {t.name}{t.kind === 'POSEUR' ? ' (poseur)' : ''}
           </FilterChip>
         ))}
         <FilterChip active={filter === 'none'} onClick={() => setFilter('none')}>
-          <span className={`h-2.5 w-2.5 rounded-full ${NO_TECH_COLOR.dot}`} /> Sans technicien
+          <span className={`h-2.5 w-2.5 rounded-full ${NO_TECH_COLOR.dot}`} /> Sans intervenant
         </FilterChip>
         {technicians.length === 0 && (
-          <span className="text-xs text-gray-500">Aucun technicien : donnez le rôle « Technicien » dans Utilisateurs.</span>
+          <span className="text-xs text-gray-500">Aucun intervenant : ajoutez-les dans « Intervenants ».</span>
         )}
         {busy && <span className="ml-auto text-xs text-gray-500">Enregistrement…</span>}
       </div>
@@ -224,7 +231,7 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
                       {c.urgent && <span className="rounded bg-red-600 px-1 text-[10px] font-bold text-white">URGENT</span>}
                       <span className="font-semibold text-gray-900">{c.name}</span>
                     </span>
-                    <span className="block text-gray-500">n° {c.number}{c.city ? ` · ${c.city}` : ''}</span>
+                    <span className="block text-gray-500">n° {c.number}{c.city ? ` · ${c.city}` : ''}{ratingShort(c.urgency, c.difficulty) ? ` · ${ratingShort(c.urgency, c.difficulty)}` : ''}</span>
                     <span className="mt-0.5 line-clamp-2 block text-gray-600">{c.summary}</span>
                   </button>
                 </li>
@@ -314,6 +321,7 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
                       >
                         <span className="block font-semibold">{hhmm(b.start)} {c.name}</span>
                         <span className="block truncate opacity-80">{c.city}{techName(c.technicianId) ? ` · ${techName(c.technicianId)}` : ''}</span>
+                        {ratingShort(c.urgency, c.difficulty) && <span className="block truncate">{ratingShort(c.urgency, c.difficulty)}</span>}
                         {report && <span className="mt-0.5 inline-block rounded bg-orange-500 px-1 font-semibold text-white">Retour à faire</span>}
                         {done && <span className="block">✓ {STATUS_LABELS[c.status]}</span>}
                       </button>
@@ -348,7 +356,8 @@ export default function PlanningBoard({ days, today, appointments, toSchedule, t
                             <span className="min-w-0 flex-1 text-sm">
                               <span className="font-semibold text-gray-900">{hhmm(b.start)} – {hhmm(b.end)} · {b.item.c.name}</span>
                               <span className="block text-xs text-gray-500">
-                                {b.item.c.city}{techName(b.item.c.technicianId) ? ` · ${techName(b.item.c.technicianId)}` : ' · sans technicien'}
+                                {b.item.c.city}{techName(b.item.c.technicianId) ? ` · ${techName(b.item.c.technicianId)}` : ' · sans intervenant'}
+                                {ratingShort(b.item.c.urgency, b.item.c.difficulty) ? ` · ${ratingShort(b.item.c.urgency, b.item.c.difficulty)}` : ''}
                               </span>
                               {b.item.c.status === 'TECH_REPORT' && <span className="block text-xs font-semibold text-orange-700">Retour technicien à faire</span>}
                               {(b.item.c.status === 'RESOLVED' || b.item.c.status === 'CLOSED') && <span className="block text-xs text-green-700">✓ {STATUS_LABELS[b.item.c.status]}</span>}
@@ -393,10 +402,10 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
-/** Détail d'un rendez-vous ou d'un dossier à planifier : date, durée, technicien. */
+/** Détail d'un rendez-vous ou d'un dossier à planifier : date, durée, intervenant (avec les suggestions de Kingso). */
 function CasePanel({ c, technicians, defaultMinutes, defaultDay, busy, onClose, onPost }: {
   c: PlanningCase
-  technicians: { id: string; name: string }[]
+  technicians: TechnicianOption[]
   defaultMinutes: number
   defaultDay: string
   busy: boolean
@@ -439,6 +448,9 @@ function CasePanel({ c, technicians, defaultMinutes, defaultDay, busy, onClose, 
           {c.equipment && <div><dt className="inline text-gray-500">Équipement : </dt><dd className="inline">{c.equipment}</dd></div>}
         </dl>
         <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm text-gray-700">{c.summary}</p>
+        <div className="mt-3">
+          <CaseRating caseId={c.id} urgency={c.urgency} difficulty={c.difficulty} />
+        </div>
         {c.status === 'TECH_REPORT' && (
           <p className="mt-3 rounded-lg bg-orange-100 px-3 py-2 text-sm font-semibold text-orange-900">Intervention passée : retour du technicien à faire dans le dossier.</p>
         )}
@@ -455,12 +467,13 @@ function CasePanel({ c, technicians, defaultMinutes, defaultDay, busy, onClose, 
               <DurationSelect value={minutes} onChange={setMinutes} className="py-1.5" />
             </label>
             <label className="flex items-center justify-between gap-2 text-sm text-gray-600">
-              Technicien
+              Intervenant
               <select value={tech} onChange={(e) => setTech(e.target.value)} className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900">
                 <option value="">Aucun</option>
-                {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {technicians.map((t) => <option key={t.id} value={t.id}>{t.name}{t.kind === 'POSEUR' ? ' (poseur)' : ''}</option>)}
               </select>
             </label>
+            <TechnicianSuggestions caseId={c.id} selected={tech} onPick={setTech} disabled={busy} />
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" size="sm" onClick={save} loading={busy} disabled={busy || !day || !time || !changed}>
                 {c.start ? 'Enregistrer' : 'Planifier'}

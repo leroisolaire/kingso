@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { after } from 'next/server'
 import { getCurrentUser } from '@/lib/auth/dal'
-import { savTabsFor } from '@/lib/auth/permissions'
+import { canAccess, savTabsFor } from '@/lib/auth/permissions'
 import { db } from '@/lib/db/client'
 import { defaultDuration, isCalendarConnected } from '@/lib/sav/calendar'
 import { checkMailboxIfStale } from '@/lib/sav/gmail'
@@ -11,6 +11,7 @@ import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
 import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS, SOURCE_LABELS } from '@/lib/sav/status'
 import { CHAT_REQUEST_WHERE } from '@/lib/sav/chatRequests'
+import { ratingShort } from '@/lib/sav/rating'
 import { kingsoPresence, PRESENCE_STYLES } from '@/lib/sav/presence'
 import { refreshSavTimers } from '@/lib/sav/timers'
 import { savSearchWhere } from '@/lib/sav/search'
@@ -29,6 +30,10 @@ function emailState(c: { email: string | null; emailTemplate: string | null; ema
   if (!c.email) return { label: 'Pas d\'email', cls: 'font-medium text-gray-500' }
   return { label: '', cls: '' }
 }
+
+/** Photos du dossier (client et technicien) : repère dans la liste. */
+const photoCount = (c: { techPhotos: string[]; messages: { photos: string[] }[] }) =>
+  c.techPhotos.length + c.messages.reduce((n, m) => n + m.photos.length, 0)
 
 export default async function SavPage({ searchParams }: { searchParams: Promise<{ onglet?: string; q?: string; origine?: string }> }) {
   // Passages automatiques en « À rappeler » (pas de clic, pas de nouvelles) avant d'afficher les listes
@@ -58,14 +63,14 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
     db.savCase.count({ where: { AND: [CHAT_REQUEST_WHERE, { status: { in: visibleStatuses } }] } }),
     db.savCase.findMany({
       where: search ? { AND: [{ status: { in: visibleStatuses } }, search] } : { AND: [{ status: { in: tab.statuses } }, originWhere] },
-      // Files de travail : urgents d'abord, puis les plus anciens ; dossiers terminés et recherche : les plus récents
+      // Files de travail : les plus urgents d'abord (note de 1 à 5), puis les plus anciens ; dossiers terminés et recherche : les plus récents
       // Onglet « Planifiés » : par date de rendez-vous (dossiers sans date en tête, à compléter)
       orderBy: search ? [{ receivedAt: 'desc' }]
         : done ? [{ updatedAt: 'desc' }]
         : tab.statuses.every((s) => s === 'SCHEDULED' || s === 'TECH_REPORT') ? [{ appointmentAt: { sort: 'asc', nulls: 'first' } }]
-        : [{ urgent: 'desc' }, { receivedAt: 'asc' }],
+        : [{ urgency: { sort: 'desc', nulls: 'last' } }, { urgent: 'desc' }, { receivedAt: 'asc' }],
       take: search ? 100 : 200,
-      include: { _count: { select: { messages: true } }, technician: { select: { name: true, email: true } } },
+      include: { _count: { select: { messages: true } }, technician: { select: { name: true } }, messages: { select: { photos: true } } },
     }),
     getSavSettings(),
     isCalendarConnected().catch(() => false),
@@ -102,6 +107,11 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
         <Link href="/admin/sav/planning" className="rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800">
           📅 Planning
         </Link>
+        {canAccess(user.roles, '/admin/sav/intervenants') && (
+          <Link href="/admin/sav/intervenants" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            ⚒ Intervenants
+          </Link>
+        )}
         {isSuperAdmin && (
           <Link href="/admin/sav/reglages" className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Réglages et modèles d&apos;email
@@ -194,14 +204,14 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                         <span aria-hidden="true">📅</span>
                         {c.appointmentAt ? `Intervention ${formatAppointment(c.appointmentAt, c.appointmentMinutes ?? defaultMinutes)}` : 'Planifié sans date : saisissez la date du rendez-vous'}
                         {c.planningEventId && <span className="font-medium text-green-700">· ✓ au planning</span>}
-                        {c.technician && <span className="font-medium text-gray-700">· 👷 {c.technician.name || c.technician.email}</span>}
+                        {c.technician && <span className="font-medium text-gray-700">· 👷 {c.technician.name}</span>}
                       </p>
                     )}
                     {c.status === 'TECH_REPORT' && (
                       <p className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-orange-100 px-2.5 py-1 text-sm font-semibold text-orange-900 ring-1 ring-orange-300">
                         <span aria-hidden="true">🛠</span>
                         Retour technicien attendu{c.appointmentAt ? ` — intervention du ${formatAppointment(c.appointmentAt)}` : ''}
-                        {c.technician && <span className="font-medium">· 👷 {c.technician.name || c.technician.email}</span>}
+                        {c.technician && <span className="font-medium">· 👷 {c.technician.name}</span>}
                       </p>
                     )}
                     {c.techOutcome === 'QUOTE' && c.status === 'TO_CALL' && (
@@ -217,6 +227,12 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                       <span className={`rounded-md px-2 py-0.5 font-semibold ring-1 ${CATEGORY_COLORS[c.category]}`}>{CATEGORY_LABELS[c.category]}</span>
                       <span className="rounded-md bg-gray-50 px-2 py-0.5 text-gray-600 ring-1 ring-gray-200">{SOURCE_LABELS[c.source]}</span>
+                      {ratingShort(c.urgency, c.difficulty) && (
+                        <span className="rounded-md bg-white px-2 py-0.5 font-medium text-gray-800 ring-1 ring-gray-300" title="Urgence · difficulté (sur 5)">{ratingShort(c.urgency, c.difficulty)}</span>
+                      )}
+                      {photoCount(c) > 0 && (
+                        <span className="rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-900 ring-1 ring-amber-300">📷 {photoCount(c)} photo{photoCount(c) > 1 ? 's' : ''}</span>
+                      )}
                       {!c.clientId && c.source !== 'CHAT' && (
                         <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-900 ring-1 ring-yellow-400">Client non identifié</span>
                       )}

@@ -292,7 +292,44 @@ model User {
   lastLoginAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
-  savInterventions SavCase[] @relation("SavTechnician")
+  technician     Technician?
+}
+
+enum TechnicianKind {
+  SAV // technicien SAV : compte de connexion (Google ou mot de passe), voit tout l'espace SAV
+  POSEUR // poseur (équipe chantier) : pas de compte, un lien personnel par intervention
+}
+
+/// Fiche d'un intervenant (technicien SAV ou poseur) : compétences, difficulté maximale, secteur, repérage dans l'agenda des chantiers
+model Technician {
+  id            String         @id @default(cuid())
+  name          String
+  kind          TechnicianKind @default(SAV)
+  phone         String?
+  /// Compte de connexion (techniciens SAV) ; les poseurs n'en ont pas
+  userId        String?        @unique
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// Compétences (clés de lib/sav/skills.ts : PAC, CLIM, CET, PV…)
+  skills        String[]       @default([])
+  /// Difficulté maximale (1 à 5) des interventions qu'il peut prendre ; null = pas de limite
+  maxDifficulty Int?
+  /// Secteur : départements, codes postaux ou communes, séparés par des virgules
+  sector        String?
+  /// Repères dans le titre des événements de l'agenda des chantiers (souvent les 3 premières lettres du prénom)
+  agendaCodes   String[]       @default([])
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  cases         SavCase[]      @relation("SavTechnician")
+}
+
+/// Géocodage des adresses (API Adresse de l'État), gardé pour ne pas redemander : null = adresse introuvable
+model GeoPoint {
+  query     String   @id
+  lat       Float?
+  lng       Float?
+  label     String?
+  createdAt DateTime @default(now())
 }
 
 model WebSource {
@@ -358,6 +395,10 @@ model SavCase {
   category         SavCategory  @default(UNCLEAR)
   urgent           Boolean      @default(false)
   urgentReason     String?
+  /// Urgence de 1 (peut attendre) à 5 (tout de suite), proposée par Kingso, modifiable par tous ; 4 et plus = urgent
+  urgency          Int?
+  /// Difficulté de l'intervention de 1 (simple) à 5 (complexe), notée par l'équipe
+  difficulty       Int?
   // Client (tel que compris dans le message, complété par le fichier client)
   phoneKey         String? // numéro normalisé (+33…) : regroupe les messages d'un même client
   callbackPhone    String?
@@ -402,7 +443,9 @@ model SavCase {
   appointmentAt    DateTime?
   appointmentMinutes Int? // durée de l'intervention (sinon la durée par défaut des réglages)
   technicianId     String?
-  technician       User?        @relation("SavTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  technician       Technician?  @relation("SavTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
+  /// Lien personnel de l'intervenant affecté (poseur sans compte) : /i/{techToken} ; changé quand l'intervenant change
+  techToken        String?      @unique
   // Retour du technicien après l'intervention
   techOutcome      String? // RESOLVED, REVISIT, ABSENT, QUOTE
   techReport       String?

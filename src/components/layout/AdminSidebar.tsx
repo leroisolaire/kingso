@@ -11,6 +11,7 @@ const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
   { href: '/admin/sav', label: 'Espace SAV', icon: '☎' },
   { href: '/admin/sav/planning', label: 'Planning', icon: '▤' },
+  { href: '/admin/sav/intervenants', label: 'Intervenants', icon: '⚒' },
   { href: '/admin/assistants', label: 'Chats', icon: '◉' },
   { href: '/admin/documents', label: 'Documents', icon: '⊞' },
   { href: '/admin/categories', label: 'Catégories', icon: '⊟' },

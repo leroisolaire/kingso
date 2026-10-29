@@ -37,9 +37,12 @@ export interface CalendarState {
   error?: string | null
   /** Dernière lecture des changements faits dans Google Agenda */
   lastPullAt?: string
+  /** Agenda des chantiers (lu seulement) : repère les poseurs sur un chantier proche d'un dossier */
+  chantierCalendarId?: string | null
+  chantierCalendarName?: string | null
 }
 
-export interface CalendarOption { id: string; name: string; primary: boolean }
+export interface CalendarOption { id: string; name: string; primary: boolean; writable: boolean }
 
 export async function getCalendarState(): Promise<CalendarState> {
   const row = await db.appSetting.findUnique({ where: { key: STATE_KEY } })
@@ -83,10 +86,13 @@ async function calendarFetch<T>(accessToken: string, path: string, init?: Reques
   return json as T
 }
 
+/** Agendas visibles par le compte connecté ; `writable` : Kingso peut y créer des rendez-vous (agenda du planning). */
 async function fetchCalendars(accessToken: string): Promise<CalendarOption[]> {
-  const res = await calendarFetch<{ items?: { id: string; summary: string; summaryOverride?: string; primary?: boolean }[] }>(
-    accessToken, '/users/me/calendarList?minAccessRole=writer&maxResults=100')
-  return (res.items ?? []).map((c) => ({ id: c.id, name: c.summaryOverride || c.summary, primary: Boolean(c.primary) }))
+  const res = await calendarFetch<{ items?: { id: string; summary: string; summaryOverride?: string; primary?: boolean; accessRole?: string }[] }>(
+    accessToken, '/users/me/calendarList?minAccessRole=reader&maxResults=250')
+  return (res.items ?? []).map((c) => ({
+    id: c.id, name: c.summaryOverride || c.summary, primary: Boolean(c.primary), writable: c.accessRole === 'owner' || c.accessRole === 'writer',
+  }))
 }
 
 /** Fin de la connexion : garde le jeton (chiffré) ; l'agenda principal du compte est choisi par défaut. */
@@ -94,11 +100,11 @@ export async function completeCalendarConnection(code: string, redirectUri: stri
   const tokens = await oauthTokenRequest({ code, redirect_uri: redirectUri, grant_type: 'authorization_code' })
   if (!tokens.refresh_token) throw new Error('Google n\'a pas fourni d\'accès durable : recommencez la connexion.')
   const calendars = await fetchCalendars(tokens.access_token)
-  const primary = calendars.find((c) => c.primary)
+  const primary = calendars.find((c) => c.primary && c.writable)
   if (!primary) throw new Error('Aucun agenda modifiable sur ce compte.')
   const current = await getCalendarState()
   // Reconnexion du même compte : on garde l'agenda choisi s'il existe toujours
-  const keep = current.calendarId && calendars.find((c) => c.id === current.calendarId)
+  const keep = current.calendarId && calendars.find((c) => c.id === current.calendarId && c.writable)
   await saveState({
     email: primary.id,
     token: seal(SEAL, tokens.refresh_token),
@@ -140,13 +146,24 @@ export async function listCalendars(): Promise<CalendarOption[]> {
   return token ? fetchCalendars(token) : []
 }
 
-export async function updateCalendarSettings(input: { calendarId?: string; durationMinutes?: number }) {
+export async function updateCalendarSettings(input: { calendarId?: string; durationMinutes?: number; chantierCalendarId?: string | null }) {
   const patch: Partial<CalendarState> = {}
   if (input.calendarId) {
-    const calendar = (await listCalendars()).find((c) => c.id === input.calendarId)
+    const calendar = (await listCalendars()).find((c) => c.id === input.calendarId && c.writable)
     if (!calendar) throw new Error('Agenda introuvable ou non modifiable avec ce compte.')
     patch.calendarId = calendar.id
     patch.calendarName = calendar.name
+  }
+  if (input.chantierCalendarId !== undefined) {
+    if (!input.chantierCalendarId) {
+      patch.chantierCalendarId = null
+      patch.chantierCalendarName = null
+    } else {
+      const calendar = (await listCalendars()).find((c) => c.id === input.chantierCalendarId)
+      if (!calendar) throw new Error('Agenda des chantiers introuvable avec ce compte.')
+      patch.chantierCalendarId = calendar.id
+      patch.chantierCalendarName = calendar.name
+    }
   }
   if (input.durationMinutes !== undefined) {
     if (!isValidDuration(input.durationMinutes)) {
@@ -171,7 +188,7 @@ export function planningEventLink(ref: string | null): string | null {
   return `https://www.google.com/calendar/event?eid=${Buffer.from(`${parsed.eventId} ${parsed.calendarId}`).toString('base64url')}`
 }
 
-type CaseForEvent = Prisma.SavCaseGetPayload<{ include: { client: true; technician: { select: { name: true; email: true } } } }>
+type CaseForEvent = Prisma.SavCaseGetPayload<{ include: { client: true; technician: { select: { name: true } } } }>
 
 function eventBody(c: CaseForEvent, start: Date, durationMinutes: number) {
   const end = new Date(start.getTime() + durationMinutes * 60_000)
@@ -185,7 +202,7 @@ function eventBody(c: CaseForEvent, start: Date, durationMinutes: number) {
     c.equipment ? `Équipement : ${c.equipment}` : null,
     c.errorCode ? `Code erreur : ${c.errorCode}` : null,
     c.client?.contract ? `Contrat : ${c.client.contract}` : null,
-    c.technician ? `Technicien : ${c.technician.name || c.technician.email}` : null,
+    c.technician ? `Intervenant : ${c.technician.name}` : null,
   ].filter(Boolean)
   const description = [details.join('\n'), c.summary, `Dossier Kingso : ${admin}`].filter(Boolean).join('\n\n')
   return {
@@ -206,7 +223,7 @@ export type SyncResult = 'added' | 'updated' | 'removed' | 'unchanged'
 export async function syncCaseEvent(caseId: string, options: { create?: boolean; remove?: boolean } = {}): Promise<SyncResult> {
   const c = await db.savCase.findUniqueOrThrow({
     where: { id: caseId },
-    include: { client: true, technician: { select: { name: true, email: true } } },
+    include: { client: true, technician: { select: { name: true } } },
   })
   const ref = parseRef(c.planningEventId)
   // Intervention passée (retour technicien, résolu) ou dossier clos : l'événement reste dans l'agenda, comme trace
@@ -282,6 +299,43 @@ export async function listAgendaEvents(from: Date, to: Date, exclude: string[] =
     .map((e) => ({
       id: e.id,
       title: e.summary || '(sans titre)',
+      allDay: !e.start?.dateTime,
+      start: e.start?.dateTime ?? e.start!.date!,
+      end: e.end?.dateTime ?? e.end?.date ?? e.start?.dateTime ?? e.start!.date!,
+    }))
+}
+
+export interface ChantierEvent {
+  id: string
+  title: string
+  location: string | null
+  description: string | null
+  /** Début et fin (ISO) ; journée entière : dates AAAA-MM-JJ, fin exclue */
+  start: string
+  end: string
+  allDay: boolean
+}
+
+/** Événements de l'agenda des chantiers sur une période (lecture seule). Rien si cet agenda n'est pas choisi. */
+export async function listChantierEvents(from: Date, to: Date): Promise<ChantierEvent[]> {
+  const state = await getCalendarState()
+  if (!state.chantierCalendarId) return []
+  const token = await accessToken()
+  if (!token) return []
+  const params = new URLSearchParams({
+    timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '500',
+  })
+  const res = await calendarFetch<{ items?: {
+    id: string; summary?: string; status?: string; location?: string; description?: string
+    start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string }
+  }[] }>(token, `/calendars/${encodeURIComponent(state.chantierCalendarId)}/events?${params}`)
+  return (res.items ?? [])
+    .filter((e) => e.status !== 'cancelled' && (e.start?.dateTime || e.start?.date))
+    .map((e) => ({
+      id: e.id,
+      title: e.summary ?? '',
+      location: e.location?.trim() || null,
+      description: e.description?.trim() || null,
       allDay: !e.start?.dateTime,
       start: e.start?.dateTime ?? e.start!.date!,
       end: e.end?.dateTime ?? e.end?.date ?? e.start?.dateTime ?? e.start!.date!,
