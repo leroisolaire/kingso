@@ -7,23 +7,68 @@ export async function getCaseByToken(token: string | null | undefined) {
   if (!token || token.length < 16 || token.length > 64) return null
   const c = await db.savCase.findUnique({
     where: { accessToken: token },
-    include: { assistant: { select: { slug: true } } },
+    include: { assistant: { select: { slug: true } }, client: { select: { equipment: true } } },
   })
   if (!c || c.tokenExpiresAt < new Date()) return null
   return c
 }
 
 /** Ce que Kingso sait du client dans son chat personnel (jamais d'adresse, de téléphone ni d'email). */
-export function caseContextText(c: { number: number; equipment: string | null; clientQuestion: string | null; summary: string; errorCode: string | null }): string {
+export function caseContextText(c: {
+  number: number; equipment: string | null; clientQuestion: string | null; summary: string; errorCode: string | null
+  client?: { equipment: string | null } | null
+}): string {
+  const fileEquipment = c.client?.equipment || null
+  // Équipement du dossier différent de la fiche client : dit par le client ou corrigé par l'équipe
+  const saidEquipment = c.equipment && c.equipment !== fileEquipment ? c.equipment : null
   return [
     `Dossier SAV n° ${c.number}.`,
+    `Problème signalé par le client (son message au SAV, reçu par toi comme 1er message) : ${c.clientQuestion ?? c.summary}`,
+    saidEquipment ? `Équipement indiqué par le client ou vérifié par notre équipe (fiable) : ${saidEquipment}.` : '',
     // Le fichier client liste les ouvrages posés (souvent sans marque ni modèle exact) : jamais une certitude
-    c.equipment
-      ? `Ouvrages notés dans notre fichier client (indicatif, souvent sans marque ni modèle exact, parfois incomplet) : ${c.equipment}. Ne dis jamais au client que tu connais son installation. Si la marque ou le modèle exact te manque pour répondre, demande-les-lui comme d'habitude (règle MODÈLE INCONNU).`
-      : 'Équipement : non précisé (demande la marque et le modèle si nécessaire, règle MODÈLE INCONNU).',
-    `Problème signalé : ${c.clientQuestion ?? c.summary}`,
+    fileEquipment
+      ? `Ouvrages notés dans notre fichier client (indicatif, souvent sans marque ni modèle exact, parfois incomplet) : ${fileEquipment}.`
+      : '',
+    !saidEquipment && !fileEquipment ? 'Équipement : non précisé.' : '',
     c.errorCode ? `Code affiché : ${c.errorCode}.` : '',
   ].filter(Boolean).join('\n')
+}
+
+const PHOTO_NOTE = /\n?\[Photo : [\s\S]*\]$/
+
+export interface CaseConversationEntry {
+  historyId: string
+  /** Ce que le client a écrit (sans le texte lu sur ses photos) */
+  user: string
+  /** Avec le texte lu sur les photos : renvoyé à Kingso comme historique */
+  userForHistory: string
+  assistant: string
+  attachments: string[]
+  rating: number | null
+  /** 1er message envoyé par Kingso à partir du message du client au SAV : pas affiché comme écrit par le client */
+  fromCaseMessage: boolean
+  createdAt: Date
+}
+
+/** Conversation du chat personnel, telle qu'enregistrée : la même sur tous les appareils du client et dans le back-office. */
+export async function caseConversation(c: { chatSessionToken: string | null; clientQuestion: string | null }): Promise<CaseConversationEntry[]> {
+  if (!c.chatSessionToken) return []
+  const entries = await db.history.findMany({
+    where: { sessionToken: c.chatSessionToken },
+    orderBy: { createdAt: 'asc' },
+    take: 200,
+    select: { id: true, userMessage: true, assistantMessage: true, attachments: true, rating: true, createdAt: true },
+  })
+  return entries.map((e, i) => ({
+    historyId: e.id,
+    user: e.userMessage.replace(PHOTO_NOTE, ''),
+    userForHistory: e.userMessage,
+    assistant: e.assistantMessage,
+    attachments: e.attachments,
+    rating: e.rating,
+    fromCaseMessage: i === 0 && Boolean(c.clientQuestion) && e.userMessage.trim() === c.clientQuestion!.trim(),
+    createdAt: e.createdAt,
+  }))
 }
 
 /** Statuts d'où l'ouverture du lien fait passer le dossier « Avec Kingso ». Un dossier à rappeler, planifié ou

@@ -244,7 +244,9 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion, 
     // Chat personnel déjà commencé (lien rouvert) : on reprend la conversation telle quelle
     if (caseMode && messages.length > 0) return
     window.history.replaceState(null, '', window.location.pathname)
-    sendMessage(initialQuestion)
+    // Chat personnel : le message laissé au SAV est envoyé à Kingso sans s'afficher comme écrit par le client
+    // (l'accueil le rappelle déjà)
+    sendMessage(initialQuestion, [], { hidden: Boolean(caseMode) })
   }, [hydrated, initialQuestion, sendMessage, caseMode, messages.length])
 
   const latestOfferId = [...messages].reverse().find((m) => m.offerEscalation)?.id ?? null
@@ -258,7 +260,7 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion, 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, isTyping, cardVisible])
 
-  const userMessageCount = messages.filter((m) => m.role === 'USER').length
+  const userMessageCount = messages.filter((m) => m.role === 'USER' && !m.hidden).length
   const showStartButtons = hydrated && messages.length === 0 && assistant.startButtons.length > 0
   const showSuggestions = hydrated && !isTyping && !limitReached && assistant.suggestedQuestions.length > 0
     && (assistant.startButtons.length === 0 || userMessageCount >= 1) && userMessageCount < 4
@@ -375,7 +377,7 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion, 
             )}
 
             {messages.map((m, i) =>
-              m.role === 'USER' ? (
+              m.hidden ? null : m.role === 'USER' ? (
                 <UserBubble key={m.id} message={m} />
               ) : (
                 <KingsoBubble key={m.id} error={m.isError} footer={m.historyId && !m.isError ? (

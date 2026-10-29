@@ -7,6 +7,9 @@ import { addSavEvent } from '@/lib/sav/events'
 import { prepareEmail } from '@/lib/sav/ingest'
 import type { TemplateKey } from '@/lib/sav/templates'
 import { normalizePhone } from '@/lib/sav/phone'
+import { syncCaseEvent } from '@/lib/sav/calendar'
+import { cancelCaseEmail } from '@/lib/sav/send'
+import { removeCasePhoto } from '@/lib/storage/attachments'
 
 const TEXT_FIELDS = ['customerName', 'email', 'address', 'postalCode', 'city', 'equipment', 'urgentReason',
   'emailSubject', 'emailBody', 'clientQuestion', 'emailProblem', 'errorCode'] as const
@@ -56,5 +59,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     && (!current.emailTemplate || current.emailTemplate === current.category)) {
     await prepareEmail(id, category as TemplateKey, author)
   }
+  return NextResponse.json({ ok: true })
+}
+
+/**
+ * Suppression définitive d'un dossier (super admin) : doublon, test, saisie ratée. L'email programmé est annulé,
+ * le rendez-vous retiré de l'agenda et les photos effacées ; messages et historique partent avec le dossier.
+ */
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession()
+  if (!session?.roles.includes('SUPER_ADMIN')) return NextResponse.json({ error: 'Réservé au super admin.' }, { status: 403 })
+  const { id } = await params
+  const c = await db.savCase.findUnique({ where: { id }, select: { id: true, planningEventId: true, techPhotos: true } })
+  if (!c) return NextResponse.json({ error: 'Dossier introuvable.' }, { status: 404 })
+  await cancelCaseEmail(id, 'Dossier supprimé').catch(() => false)
+  if (c.planningEventId) await syncCaseEvent(id, { remove: true }).catch(() => null)
+  for (const path of c.techPhotos) await removeCasePhoto(path).catch(() => null)
+  await db.savCase.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

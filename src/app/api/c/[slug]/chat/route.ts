@@ -5,7 +5,7 @@ import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
 import { suggestVideo } from '@/lib/rag/videoSuggest'
 import type { Document } from '@/types/document'
 import { expandCategoryIds, findAssistantBySlug, getHomeTiles } from '@/lib/db/queries/assistants'
-import { caseContextText, getCaseByToken, markCaseChatStarted } from '@/lib/sav/caseAccess'
+import { caseContextText, getCaseByToken, markCaseChatStarted, caseConversation } from '@/lib/sav/caseAccess'
 import { resolveAssistant } from '@/lib/assistants/resolve'
 import { saveAttachments } from '@/lib/storage/attachments'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -78,9 +78,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   try {
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 2000) : ''
-    const sessionToken = typeof body.sessionToken === 'string' && body.sessionToken
+    // Chat personnel : une seule conversation par dossier, quel que soit l'appareil ou le navigateur du client
+    const sessionToken = savCase?.chatSessionToken ?? (typeof body.sessionToken === 'string' && body.sessionToken
       ? body.sessionToken.slice(0, 100)
-      : `anon-${Date.now()}`
+      : `anon-${Date.now()}`)
+    const caseEntries = savCase ? await caseConversation(savCase) : []
+    // Question du dossier envoyée automatiquement à l'ouverture : jamais deux fois (lien rouvert ailleurs)
+    if (body.initial === true && caseEntries.length > 0) return NextResponse.json({ alreadyStarted: true }, { status: 409 })
 
     const images = assistant.attachmentsEnabled ? parseImages(body.images) : []
     if (typeof images === 'string') return NextResponse.json({ error: images }, { status: 400 })
@@ -100,7 +104,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       }
     }
 
-    const history = parseHistory(body.history)
+    // Chat personnel : l'historique vient de la base (le même pour tous les appareils du client)
+    const history = savCase?.chatSessionToken
+      ? parseHistory(caseEntries.flatMap((e) => [{ role: 'user', content: e.userForHistory }, { role: 'assistant', content: e.assistant }]))
+      : parseHistory(body.history)
 
     // Lecture des photos d'abord : le code erreur / modèle visible sert à la recherche
     const imageDescription = await describeImages(images, message)

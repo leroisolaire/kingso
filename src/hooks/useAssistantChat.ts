@@ -18,7 +18,38 @@ export interface AssistantMessage {
   historyId?: string
   /** Avis du client : 1 = 👍, -1 = 👎 */
   rating?: 1 | -1 | null
+  /** Envoyé par Kingso à la place du client (message laissé au SAV) : sert de contexte, pas affiché */
+  hidden?: boolean
   createdAt: string
+}
+
+interface ServerEntry {
+  historyId: string
+  user: string
+  userForHistory: string
+  assistant: string
+  photos: string[]
+  rating: 1 | -1 | null
+  hidden: boolean
+  createdAt: string
+}
+
+/** Conversation du chat personnel enregistrée (null si elle n'a pas pu être lue). */
+async function loadCaseConversation(caseToken: string): Promise<AssistantMessage[] | null> {
+  try {
+    const res = await fetch(`/api/s/${encodeURIComponent(caseToken)}/conversation`, { cache: 'no-store' })
+    if (!res.ok) return null
+    const { entries } = (await res.json()) as { entries: ServerEntry[] }
+    return entries.flatMap((e): AssistantMessage[] => [
+      {
+        id: `${e.historyId}-user`, role: 'USER', content: e.user, historyContent: e.userForHistory,
+        thumbnails: e.photos, hidden: e.hidden, createdAt: e.createdAt,
+      },
+      { id: `${e.historyId}-assistant`, role: 'ASSISTANT', content: e.assistant, historyId: e.historyId, rating: e.rating, createdAt: e.createdAt },
+    ])
+  } catch {
+    return null
+  }
 }
 
 interface StoredState {
@@ -92,17 +123,32 @@ export function useAssistantChat(slug: string, caseToken?: string) {
   // Restauration après rechargement : sessionStorage n'existe que côté navigateur,
   // la lecture doit donc se faire après le rendu serveur.
   useEffect(() => {
+    let cancelled = false
     const stored = loadState(storeKey)
     sessionToken.current = stored?.sessionToken ?? newSessionToken()
+    const restore = (list: AssistantMessage[]) => {
+      setMessages(list)
+      if (list.length > 0) setMascotState('idle')
+    }
     if (stored) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMessages(stored.messages)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restauration après rechargement (navigateur seulement)
       setEscalationOffered(stored.escalationOffered)
       setEscalationSent(stored.escalationSent)
-      if (stored.messages.length > 0) setMascotState('idle')
     }
-    setHydrated(true)
-  }, [storeKey])
+    if (!caseToken) {
+      if (stored) restore(stored.messages)
+      setHydrated(true)
+      return
+    }
+    // Chat personnel : la conversation enregistrée fait foi (la même sur tous les appareils du client) ;
+    // la copie du navigateur ne sert que si elle ne peut pas être lue
+    loadCaseConversation(caseToken).then((server) => {
+      if (cancelled) return
+      restore(server ?? stored?.messages ?? [])
+      setHydrated(true)
+    })
+    return () => { cancelled = true }
+  }, [storeKey, caseToken])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -126,7 +172,7 @@ export function useAssistantChat(slug: string, caseToken?: string) {
     timers.current.push(setTimeout(fn, ms))
   }
 
-  const sendMessage = useCallback(async (content: string, images: PreparedImage[] = []) => {
+  const sendMessage = useCallback(async (content: string, images: PreparedImage[] = [], options: { hidden?: boolean } = {}) => {
     const text = content.trim()
     if (!text && images.length === 0) return
 
@@ -140,6 +186,7 @@ export function useAssistantChat(slug: string, caseToken?: string) {
       role: 'USER',
       content: text,
       thumbnails: images.map((i) => i.thumbnail),
+      hidden: options.hidden,
       createdAt: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMessage])
@@ -159,9 +206,18 @@ export function useAssistantChat(slug: string, caseToken?: string) {
           history,
           images: images.map(({ mediaType, data }) => ({ mediaType, data })),
           ...(caseToken ? { caseToken } : {}),
+          ...(options.hidden ? { initial: true } : {}),
         }),
       })
       const data = await response.json().catch(() => ({}))
+
+      // Conversation déjà commencée sur un autre appareil : on la reprend au lieu de reposer la question
+      if (data.alreadyStarted && caseToken) {
+        const server = await loadCaseConversation(caseToken)
+        setMessages(server ?? messagesRef.current.filter((m) => m.id !== userMessage.id))
+        setMascotState('idle')
+        return
+      }
 
       if (!response.ok) {
         if (data.limitReached) setLimitReached(true)

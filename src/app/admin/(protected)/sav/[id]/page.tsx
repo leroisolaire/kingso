@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { getCurrentUser } from '@/lib/auth/dal'
 import { db } from '@/lib/db/client'
 import { suggestClients } from '@/lib/sav/clients'
 import { defaultDuration, isCalendarConnected, planningEventLink } from '@/lib/sav/calendar'
@@ -43,6 +44,7 @@ export default async function SavCasePage({ params, searchParams }: {
   const backHref = query ? `/admin/sav?q=${encodeURIComponent(query)}` : fromTab ? `/admin/sav?onglet=${fromTab.key}` : '/admin/sav'
   const backLabel = query ? `Retour à la recherche « ${query} »` : fromTab ? `Retour aux demandes « ${fromTab.label} »` : 'Retour à toutes les demandes'
   await refreshSavTimers().catch(() => 0)
+  const user = await getCurrentUser()
   const c = await db.savCase.findUnique({
     where: { id },
     include: {
@@ -97,6 +99,7 @@ export default async function SavCasePage({ params, searchParams }: {
         kingso={kingso}
         calendarConnected={calendarConnected}
         technicians={technicians}
+        canDelete={user.roles.includes('SUPER_ADMIN')}
         suggestions={suggestions.map((s) => ({ ...s, phones: s.phones.map(formatPhone) }))}
         data={{
           id: c.id,
@@ -147,7 +150,11 @@ export default async function SavCasePage({ params, searchParams }: {
             id: e.id, label: EVENT_LABELS[e.kind] ?? e.kind, kind: e.kind, detail: e.detail,
             author: e.author, at: formatParisDate(e.createdAt, true),
           })),
-          conversation: conversation.map((h) => ({ id: h.id, user: h.userMessage, kingso: h.assistantMessage, at: formatParisDate(h.createdAt, true) })),
+          conversation: conversation.map((h, i) => ({
+            id: h.id, user: h.userMessage, kingso: h.assistantMessage, at: formatParisDate(h.createdAt, true),
+            // 1er message envoyé par Kingso à partir du message laissé au SAV (le client ne l'a pas écrit)
+            fromCase: i === 0 && Boolean(c.clientQuestion) && h.userMessage.trim() === c.clientQuestion!.trim(),
+          })),
         }}
       />
       <div className="border-t border-gray-200 pt-4">

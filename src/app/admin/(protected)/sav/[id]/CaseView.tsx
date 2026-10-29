@@ -53,7 +53,7 @@ interface CaseData {
   planningLink: string | null
   messages: { id: string; source: string; text: string; at: string; phone: string; durationSec: number | null }[]
   events: { id: string; label: string; kind: string; detail: string | null; author: string | null; at: string }[]
-  conversation: { id: string; user: string; kingso: string; at: string }[]
+  conversation: { id: string; user: string; kingso: string; at: string; fromCase: boolean }[]
 }
 
 interface ClientOption {
@@ -78,6 +78,7 @@ interface Props {
   kingso: { tone: Presence['tone']; label: string; detail: string } | null
   calendarConnected: boolean
   technicians: { id: string; name: string }[]
+  canDelete: boolean
 }
 
 const SOURCE_LABELS: Record<string, string> = { VOICEMAIL: 'Répondeur', CHAT: 'Chat', MANUAL: 'Saisie manuelle' }
@@ -155,7 +156,7 @@ function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOp
   )
 }
 
-export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected, technicians }: Props) {
+export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected, technicians, canDelete }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -212,6 +213,16 @@ export default function CaseView({ data, link, paused, templates, assistants, su
         ? `Email confié à l'envoi : il partira le ${at.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`
         : `Email envoyé à ${data.email}.`)
     }
+  }
+  const deleteCase = async () => {
+    if (!confirm(`Supprimer définitivement le dossier n° ${data.number} ? Ses messages et son historique seront effacés.`)) return
+    setBusy('delete')
+    setError(null)
+    const res = await fetch(`/api/sav/cases/${data.id}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) { setBusy(null); setError(json.error ?? `Erreur ${res.status}`); return }
+    router.push('/admin/sav')
+    router.refresh()
   }
   const open = !['RESOLVED', 'CLOSED'].includes(data.status)
   const canCall = ['NEW', 'WAITING', 'IN_CHAT', 'TO_CALL'].includes(data.status)
@@ -352,7 +363,13 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                 {data.conversation.map((h) => (
                   <div key={h.id} className="space-y-1.5 text-sm">
                     <p className="text-xs text-gray-400">{h.at}</p>
-                    <p className="rounded-lg bg-orange-50 px-3 py-2 whitespace-pre-wrap"><strong>Client :</strong> {h.user}</p>
+                    {h.fromCase ? (
+                      <p className="rounded-lg border border-dashed border-orange-300 px-3 py-2 whitespace-pre-wrap text-gray-600">
+                        <strong>Message laissé au SAV</strong> <span className="text-xs">(transmis par Kingso, non affiché au client)</span> : {h.user}
+                      </p>
+                    ) : (
+                      <p className="rounded-lg bg-orange-50 px-3 py-2 whitespace-pre-wrap"><strong>Client :</strong> {h.user}</p>
+                    )}
                     <p className="rounded-lg bg-gray-50 px-3 py-2 whitespace-pre-wrap"><strong>Kingso :</strong> {h.kingso}</p>
                   </div>
                 ))}
@@ -472,6 +489,13 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                 Rouvrir (à rappeler)
               </Button>
             </Card>
+          )}
+          {canDelete && (
+            <div className="text-right">
+              <button type="button" onClick={deleteCase} disabled={busy !== null} className="text-xs text-red-600 hover:underline disabled:opacity-50">
+                {busy === 'delete' ? 'Suppression…' : 'Supprimer ce dossier'}
+              </button>
+            </div>
           )}
 
           {/* Dernier retour du technicien */}

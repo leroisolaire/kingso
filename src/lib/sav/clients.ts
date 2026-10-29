@@ -10,9 +10,13 @@ const normalize = (s: string | null | undefined) =>
  * Retrouve le client dans le fichier client par ses numéros (appelant, puis numéro dicté),
  * la commune servant à départager un numéro partagé. Jamais d'IA ici : simple comparaison.
  */
-export async function findClient(phones: (string | null)[], city?: string | null): Promise<{ client: SavClient | null; match: string }> {
+export async function findClient(phones: (string | null)[], city?: string | null, email?: string | null): Promise<{ client: SavClient | null; match: string }> {
   const list = [...new Set(phones.filter((p): p is string => Boolean(p)))]
-  if (list.length === 0) return { client: null, match: 'Aucun numéro exploitable dans le message' }
+  if (list.length === 0) {
+    const byEmail = email ? await findByEmail(email, city) : null
+    if (byEmail) return byEmail
+    return { client: null, match: email ? `Aucun numéro dans le message, email ${email} absent du fichier client` : 'Aucun numéro exploitable dans le message' }
+  }
 
   for (const phone of list) {
     const found = await db.savClient.findMany({ where: { phones: { has: phone } }, take: 5 })
@@ -29,8 +33,22 @@ export async function findClient(phones: (string | null)[], city?: string | null
       return { client: null, match: `${found.length} clients ont le numéro ${formatPhone(phone)} : à vérifier` }
     }
   }
+  const byEmail = email ? await findByEmail(email, city) : null
+  if (byEmail) return byEmail
   const total = await db.savClient.count()
   return { client: null, match: total === 0 ? 'Fichier client pas encore importé' : 'Numéro absent du fichier client' }
+}
+
+/** Client retrouvé par son adresse email (message écrit sans numéro, ou numéro inconnu du fichier). */
+async function findByEmail(email: string, city?: string | null): Promise<{ client: SavClient; match: string } | null> {
+  const found = await db.savClient.findMany({ where: { email: { equals: email.trim(), mode: 'insensitive' } }, take: 5 })
+  if (found.length === 1) return { client: found[0], match: `Email ${email}` }
+  if (found.length > 1) {
+    const byCity = city ? found.filter((c) => normalize(c.city) === normalize(city)) : []
+    // Plusieurs fiches avec cet email (doublons, couple…) : c'est bien la même adresse à utiliser
+    return { client: byCity[0] ?? found[0], match: `Email ${email} (${found.length} fiches)` }
+  }
+  return null
 }
 
 // ── Clients possibles (numéro introuvable) ──

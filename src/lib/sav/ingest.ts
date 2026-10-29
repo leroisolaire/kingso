@@ -5,6 +5,7 @@ import { db } from '@/lib/db/client'
 import { analyzeMessage, type MessageAnalysis } from './analyze'
 import { findClient } from './clients'
 import { buildEmail } from './draft'
+import { customerEmailFrom } from './emailAddress'
 import { addSavEvent } from './events'
 import { formatPhone, normalizePhone } from './phone'
 import { formatParisDate, plannedSendTime } from './schedule'
@@ -106,11 +107,13 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
 
   // ── Nouveau dossier ── (fichier client relu s'il a changé depuis le dernier import)
   await import('./clientSync').then((m) => m.syncClientFile()).catch(() => null)
-  const { client, match } = await findClient([input.callerPhone ?? null, input.dictatedPhone ?? null], analysis.city)
+  // Email écrit dans le message (email du client collé ou transféré) : sert à le retrouver et à lui répondre
+  const writtenEmail = customerEmailFrom(input.text)
+  const { client, match } = await findClient([input.callerPhone ?? null, input.dictatedPhone ?? null], analysis.city, writtenEmail)
   const followUp = analysis.mentionsPreviousCalls
   const category = analysis.category as SavCategory
   const key = templateFor(category, followUp)
-  const email = client?.email ?? null
+  const email = client?.email ?? writtenEmail
   const status: SavStatus = category === 'SELF_HELP' && !followUp && email ? 'NEW' : 'TO_CALL'
 
   const created = await db.savCase.create({
