@@ -5,7 +5,8 @@ import { seal as sealWith, unseal as unsealWith } from '@/lib/auth/sealed'
 import { db } from '@/lib/db/client'
 import { CONNECTEL_SENDER, isConnectelVoicemail, parseVoicemail } from './connectel'
 import { ingestMessage } from './ingest'
-import { parseRawEmail } from './mime'
+import { handleKingsiaEmail, isKingsiaSubject } from '@/lib/kingsia/ingest'
+import { parseFullEmail, parseRawEmail } from './mime'
 
 // Réception automatique des messages du répondeur dans la boîte kingso@ (emails Connectel transférés depuis sav@).
 // Accès en LECTURE SEULE à cette seule boîte, autorisé une fois par l'équipe en se connectant avec kingso@
@@ -130,6 +131,8 @@ export interface CheckResult {
   duplicates: number
   ignored: number
   remaining: number
+  /** Mails « kingsia » traités (ajouts à la base documentaire) */
+  kingsia?: number
   error?: string
 }
 
@@ -158,23 +161,37 @@ async function runCheck(budgetMs: number): Promise<CheckResult> {
   try {
     const token = await accessToken()
     if (!token) return { ...result, status: 'not-connected' }
-    const q = encodeURIComponent(`from:${CONNECTEL_SENDER} newer_than:3d`)
-    const list = await gmailFetch<{ messages?: { id: string }[] }>(token, `/messages?q=${q}&maxResults=100&includeSpamTrash=false`)
+    // Messages du répondeur, et mails « kingsia » des collaborateurs (ajouts à la base documentaire)
+    const listOf = (query: string) => gmailFetch<{ messages?: { id: string }[] }>(
+      token, `/messages?q=${encodeURIComponent(query)}&maxResults=100&includeSpamTrash=false`)
+    const [voicemails, kingsia] = await Promise.all([listOf(`from:${CONNECTEL_SENDER} newer_than:3d`), listOf('subject:kingsia newer_than:3d')])
     const seen = new Set(state.seen ?? [])
-    const fresh = (list.messages ?? []).filter((m) => !seen.has(m.id))
+    const ids = [...new Set([...(voicemails.messages ?? []), ...(kingsia.messages ?? [])].map((m) => m.id))]
+    const fresh = ids.map((id) => ({ id })).filter((m) => !seen.has(m.id))
     result.found = fresh.length
 
     // Lecture des nouveaux messages, puis traitement dans l'ordre d'arrivée (les relances se regroupent sur le premier)
     const messages = []
     for (const m of fresh) {
       const msg = await gmailFetch<{ id: string; raw: string; internalDate: string }>(token, `/messages/${m.id}?format=raw`)
-      messages.push({ id: msg.id, internalDate: Number(msg.internalDate), email: parseRawEmail(Buffer.from(msg.raw, 'base64url').toString('latin1')) })
+      const raw = Buffer.from(msg.raw, 'base64url').toString('latin1')
+      messages.push({ id: msg.id, internalDate: Number(msg.internalDate), raw, email: parseRawEmail(raw) })
     }
     messages.sort((a, b) => a.internalDate - b.internalDate)
 
     const done: string[] = []
     for (const m of messages) {
       if (Date.now() - started > budgetMs) { result.remaining++; continue }
+      if (isKingsiaSubject(m.email.subject) && !isConnectelVoicemail(m.email.from, m.email.subject)) {
+        // Un seul traitement par mail, même si deux relevés tournent en même temps (clé unique en base)
+        const claimed = await db.appSetting.create({ data: { key: `kingsia:${m.id}`, value: { at: new Date().toISOString() } } }).then(() => true, () => false)
+        if (claimed) {
+          await handleKingsiaEmail(parseFullEmail(m.raw), Math.min(150_000, Math.max(30_000, budgetMs - (Date.now() - started))))
+          result.kingsia = (result.kingsia ?? 0) + 1
+        }
+        done.push(m.id)
+        continue
+      }
       if (!isConnectelVoicemail(m.email.from, m.email.subject)) {
         result.ignored++
         done.push(m.id)

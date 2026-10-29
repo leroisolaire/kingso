@@ -6,6 +6,7 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import DocumentStatusBadge from '@/components/admin/DocumentStatusBadge'
 import type { Document } from '@/types/document'
+import KingsiaLog from './KingsiaLog'
 
 const TYPE_LABEL: Record<Document['type'], { label: string; variant: 'public' | 'internal' | 'franchise' }> = {
   PUBLIC: { label: 'Public', variant: 'public' },
@@ -112,6 +113,8 @@ export default function DocumentsPage() {
           </Link>
         </div>
       </div>
+
+      <KingsiaLog />
 
       {!loading && documents.length > 0 && (
         <div className="mb-4 flex items-center gap-3">
