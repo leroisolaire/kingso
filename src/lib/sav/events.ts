@@ -39,6 +39,7 @@ export const EVENT_LABELS: Record<string, string> = {
   TECH_ASSIGNED: 'Technicien affecté',
   TECH_REPORT_DUE: 'Intervention passée : retour technicien attendu',
   TECH_REPORT: 'Retour technicien',
+  PHOTOS_ADDED: 'Photos ajoutées',
   NOTE: 'Note',
   EDITED: 'Dossier modifié',
 }

@@ -70,11 +70,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const session = await getSession()
   if (!session?.roles.includes('SUPER_ADMIN')) return NextResponse.json({ error: 'Réservé au super admin.' }, { status: 403 })
   const { id } = await params
-  const c = await db.savCase.findUnique({ where: { id }, select: { id: true, planningEventId: true, techPhotos: true } })
+  const c = await db.savCase.findUnique({ where: { id }, select: { id: true, planningEventId: true, techPhotos: true, messages: { select: { photos: true } } } })
   if (!c) return NextResponse.json({ error: 'Dossier introuvable.' }, { status: 404 })
   await cancelCaseEmail(id, 'Dossier supprimé').catch(() => false)
   if (c.planningEventId) await syncCaseEvent(id, { remove: true }).catch(() => null)
-  for (const path of c.techPhotos) await removeCasePhoto(path).catch(() => null)
+  for (const path of [...c.techPhotos, ...c.messages.flatMap((m) => m.photos)]) await removeCasePhoto(path).catch(() => null)
   await db.savCase.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

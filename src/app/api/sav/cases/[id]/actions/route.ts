@@ -6,13 +6,16 @@ import { currentAuthor } from '@/lib/sav/author'
 import { isCalendarConnected, syncCaseEvent, type SyncResult } from '@/lib/sav/calendar'
 import { linkClient } from '@/lib/sav/clientSync'
 import { addSavEvent } from '@/lib/sav/events'
-import { prepareEmail } from '@/lib/sav/ingest'
+import { prepareEmail, storeMessagePhotos } from '@/lib/sav/ingest'
 import { isValidDuration } from '@/lib/sav/duration'
 import { formatAppointment, parisTime } from '@/lib/sav/schedule'
 import { cancelCaseEmail, sendCaseEmail } from '@/lib/sav/send'
 import { STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
 import { checkTechnician } from '@/lib/sav/technicians'
 import { removeCasePhoto, saveCasePhoto } from '@/lib/storage/attachments'
+import { describeImages } from '@/lib/ai/assistant'
+import { analyzeMessage } from '@/lib/sav/analyze'
+import { parseCasePhotos } from '@/lib/sav/photos'
 import { TEMPLATE_KEYS, type TemplateKey } from '@/lib/sav/templates'
 
 export const maxDuration = 60
@@ -114,6 +117,36 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         if (typeof body.path !== 'string' || !c.techPhotos.includes(body.path)) throw new Error('Photo introuvable.')
         await removeCasePhoto(body.path).catch(() => null)
         await db.savCase.update({ where: { id }, data: { techPhotos: c.techPhotos.filter((p) => p !== body.path) } })
+        return NextResponse.json({ ok: true })
+      }
+      case 'message_photo': {
+        // Photo reçue après coup (email, SMS du client) : jointe au dernier message du dossier
+        const photos = parseCasePhotos([body.photo], 1)
+        if (typeof photos === 'string') throw new Error(photos)
+        const last = await db.savMessage.findFirst({ where: { caseId: id }, orderBy: { receivedAt: 'desc' }, select: { id: true, photoNote: true } })
+        if (!last) throw new Error('Aucun message dans ce dossier.')
+        const note = await describeImages(photos, '').catch(() => '')
+        if (note) await db.savMessage.update({ where: { id: last.id }, data: { photoNote: [last.photoNote, note].filter(Boolean).join(' ') } })
+        await storeMessagePhotos(id, last.id, photos, note, author)
+        // Code affiché ou équipement lisible sur la photo : complète le dossier s'il ne les a pas encore
+        const current = await db.savCase.findUniqueOrThrow({ where: { id }, select: { errorCode: true, equipment: true } })
+        if (note && (!current.errorCode || !current.equipment)) {
+          const facts = await analyzeMessage(`[Photo envoyée par le client : ${note}]`).catch(() => null)
+          const patch = {
+            ...(!current.errorCode && facts?.errorCode ? { errorCode: facts.errorCode } : {}),
+            ...(!current.equipment && facts?.equipment ? { equipment: facts.equipment } : {}),
+          }
+          if (Object.keys(patch).length) await db.savCase.update({ where: { id }, data: patch })
+        }
+        return NextResponse.json({ ok: true })
+      }
+      case 'message_photo_remove': {
+        const message = typeof body.path === 'string'
+          ? await db.savMessage.findFirst({ where: { caseId: id, photos: { has: body.path } }, select: { id: true, photos: true } })
+          : null
+        if (!message) throw new Error('Photo introuvable.')
+        await removeCasePhoto(body.path).catch(() => null)
+        await db.savMessage.update({ where: { id: message.id }, data: { photos: message.photos.filter((p) => p !== body.path) } })
         return NextResponse.json({ ok: true })
       }
       case 'tech_report': {

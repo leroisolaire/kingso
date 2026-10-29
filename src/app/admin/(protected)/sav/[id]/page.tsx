@@ -67,7 +67,7 @@ export default async function SavCasePage({ params, searchParams }: {
     isCalendarConnected().catch(() => false),
     defaultDuration().catch(() => 120),
     getTechnicians(),
-    getSignedUrls(c.techPhotos).catch(() => ({} as Record<string, string>)),
+    getSignedUrls([...c.techPhotos, ...c.messages.flatMap((m) => m.photos)]).catch(() => ({} as Record<string, string>)),
   ])
 
   // Échange avec Kingso : présence en direct et résumé (lien ouvert, messages, départ)
@@ -145,6 +145,7 @@ export default async function SavCasePage({ params, searchParams }: {
           messages: c.messages.map((m) => ({
             id: m.id, source: m.source, text: m.text, at: formatParisDate(m.receivedAt, true),
             phone: formatPhone(m.callerPhone), durationSec: m.durationSec,
+            photos: m.photos.map((path) => ({ path, url: photoUrls[path] ?? null })), photoNote: m.photoNote,
           })),
           events: c.events.map((e) => ({
             id: e.id, label: EVENT_LABELS[e.kind] ?? e.kind, kind: e.kind, detail: e.detail,

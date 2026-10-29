@@ -20,8 +20,19 @@ async function postAction(caseId: string, payload: Record<string, unknown>) {
   return json
 }
 
-/** Photos de l'intervention : prises avec le téléphone ou choisies, compressées avant l'envoi. */
-export function TechPhotos({ caseId, photos, editable }: { caseId: string; photos: CasePhoto[]; editable: boolean }) {
+/**
+ * Photos d'un dossier (intervention, ou demande du client) : prises avec le téléphone ou choisies, compressées
+ * avant l'envoi, une par une. `canAdd` à false : seulement l'affichage (et la suppression si `editable`).
+ */
+export function TechPhotos({ caseId, photos, editable, canAdd = true, addAction = 'tech_photo', removeAction = 'tech_photo_remove', addLabel = '📷 Prendre une photo' }: {
+  caseId: string
+  photos: CasePhoto[]
+  editable: boolean
+  canAdd?: boolean
+  addAction?: string
+  removeAction?: string
+  addLabel?: string
+}) {
   const router = useRouter()
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
@@ -36,7 +47,7 @@ export function TechPhotos({ caseId, photos, editable }: { caseId: string; photo
     for (const file of list) {
       try {
         const image = await prepareImage(file)
-        await postAction(caseId, { action: 'tech_photo', photo: { mediaType: image.mediaType, data: image.data } })
+        await postAction(caseId, { action: addAction, photo: { mediaType: image.mediaType, data: image.data } })
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Photo non envoyée.')
       }
@@ -48,7 +59,7 @@ export function TechPhotos({ caseId, photos, editable }: { caseId: string; photo
   const remove = async (path: string) => {
     if (!confirm('Supprimer cette photo ?')) return
     try {
-      await postAction(caseId, { action: 'tech_photo_remove', path })
+      await postAction(caseId, { action: removeAction, path })
       router.refresh()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Photo non supprimée.')
@@ -84,13 +95,13 @@ export function TechPhotos({ caseId, photos, editable }: { caseId: string; photo
           ))}
         </div>
       )}
-      {editable && (
+      {editable && canAdd && (
         <div className="flex flex-wrap items-center gap-2">
           <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { upload(e.target.files); e.target.value = '' }} />
           <input ref={galleryRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { upload(e.target.files); e.target.value = '' }} />
-          <Button type="button" size="sm" variant="secondary" onClick={() => cameraRef.current?.click()} disabled={uploading > 0}>📷 Prendre une photo</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => cameraRef.current?.click()} disabled={uploading > 0}>{addLabel}</Button>
           <Button type="button" size="sm" variant="ghost" onClick={() => galleryRef.current?.click()} disabled={uploading > 0}>Choisir des photos</Button>
-          {uploading > 0 && <span className="text-xs text-gray-500">Envoi… ({uploading})</span>}
+          {uploading > 0 && <span className="text-xs text-gray-500">Envoi et lecture par Kingso… ({uploading})</span>}
         </div>
       )}
       {error && <p className="text-xs text-red-600">{error}</p>}

@@ -431,6 +431,8 @@ model SavMessage {
   callerPhone String?
   durationSec Int?
   text        String
+  photos      String[]  @default([]) // photos jointes par l'équipe (stockage privé), jamais montrées au client
+  photoNote   String? // ce que Kingso a lu sur ces photos (code, marque, modèle…)
   receivedAt  DateTime
   createdAt   DateTime  @default(now())
 }

@@ -7,7 +7,11 @@ export async function getCaseByToken(token: string | null | undefined) {
   if (!token || token.length < 16 || token.length > 64) return null
   const c = await db.savCase.findUnique({
     where: { accessToken: token },
-    include: { assistant: { select: { slug: true } }, client: { select: { equipment: true } } },
+    include: {
+      assistant: { select: { slug: true } },
+      client: { select: { equipment: true } },
+      messages: { where: { photoNote: { not: null } }, select: { photoNote: true } },
+    },
   })
   if (!c || c.tokenExpiresAt < new Date()) return null
   return c
@@ -17,7 +21,9 @@ export async function getCaseByToken(token: string | null | undefined) {
 export function caseContextText(c: {
   number: number; equipment: string | null; clientQuestion: string | null; summary: string; errorCode: string | null
   client?: { equipment: string | null } | null
+  messages?: { photoNote: string | null }[]
 }): string {
+  const photoNotes = (c.messages ?? []).map((m) => m.photoNote).filter(Boolean)
   const fileEquipment = c.client?.equipment || null
   // Équipement du dossier différent de la fiche client : dit par le client ou corrigé par l'équipe
   const saidEquipment = c.equipment && c.equipment !== fileEquipment ? c.equipment : null
@@ -31,6 +37,9 @@ export function caseContextText(c: {
       : '',
     !saidEquipment && !fileEquipment ? 'Équipement : non précisé.' : '',
     c.errorCode ? `Code affiché : ${c.errorCode}.` : '',
+    photoNotes.length
+      ? `Photos envoyées par le client à notre équipe (il ne les voit pas dans ce chat ; ne lui redemande pas ce qu'elles montrent) : ${photoNotes.join(' ')}`
+      : '',
   ].filter(Boolean).join('\n')
 }
 

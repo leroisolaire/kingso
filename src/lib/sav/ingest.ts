@@ -5,6 +5,8 @@ import { db } from '@/lib/db/client'
 import { analyzeMessage, type MessageAnalysis } from './analyze'
 import { findClient } from './clients'
 import { buildEmail } from './draft'
+import { describeImages, type ImageInput } from '@/lib/ai/assistant'
+import { saveCasePhoto } from '@/lib/storage/attachments'
 import { customerEmailFrom } from './emailAddress'
 import { addSavEvent } from './events'
 import { formatPhone, normalizePhone } from './phone'
@@ -26,6 +28,8 @@ export interface IncomingMessage {
   source: SavSource
   /** Identifiant de l'email d'origine : un même email n'est jamais traité deux fois */
   externalId?: string | null
+  /** Photos jointes par l'équipe (saisie manuelle) : lues par Kingso, jamais montrées au client */
+  photos?: ImageInput[]
   text: string
   callerPhone?: string | null
   dictatedPhone?: string | null
@@ -71,10 +75,13 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
 
   const receivedAt = input.receivedAt ?? new Date()
   const phoneKey = input.callerPhone ?? input.dictatedPhone ?? null
-  const analysis = await analyzeMessage(input.text)
+  // Photos : ce que Kingso y lit (code affiché, marque, modèle) complète le message pour l'analyse
+  const photos = input.photos ?? []
+  const photoNote = photos.length ? await describeImages(photos, input.text).catch(() => '') : ''
+  const analysis = await analyzeMessage(photoNote ? `${input.text}\n\n[Photos jointes : ${photoNote}]` : input.text)
   const messageData = {
     source: input.source, externalId: input.externalId ?? null, callerPhone: input.callerPhone ?? null,
-    durationSec: input.durationSec ?? null, text: input.text, receivedAt,
+    durationSec: input.durationSec ?? null, text: input.text, receivedAt, photoNote: photoNote || null,
   }
 
   // ── Relance : dossier encore ouvert pour ce numéro ──
@@ -85,7 +92,8 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
       })
     : null
   if (open) {
-    await db.savMessage.create({ data: { ...messageData, caseId: open.id } })
+    const added = await db.savMessage.create({ data: { ...messageData, caseId: open.id } })
+    await storeMessagePhotos(open.id, added.id, photos, photoNote, input.author)
     await addSavEvent(open.id, 'FOLLOW_UP', `${formatParisDate(receivedAt, true)} — ${analysis.summary}`, input.author)
     // Le client relance : plus question de lui proposer Kingso par email, on le rappelle en priorité
     await cancelCaseEmail(open.id, 'Le client a relancé : email remplacé', input.author).catch(() => false)
@@ -147,6 +155,8 @@ export async function ingestMessage(input: IncomingMessage): Promise<{ caseId: s
     },
   })
 
+  const first = await db.savMessage.findFirst({ where: { caseId: created.id }, select: { id: true } })
+  if (first) await storeMessagePhotos(created.id, first.id, photos, photoNote, input.author)
   const from = input.callerPhone ? ` de ${formatPhone(input.callerPhone)}` : ''
   await addSavEvent(created.id, 'RECEIVED', `${formatParisDate(receivedAt, true)}${from}`, input.author)
   await addSavEvent(created.id, 'ANALYZED',
@@ -218,4 +228,13 @@ export async function caseFromChatEscalation(params: {
   await addSavEvent(created.id, 'CALLBACK_REQUESTED', 'Demande depuis le chat (formulaire SAV)')
   await addSavEvent(created.id, client ? 'CLIENT_FOUND' : 'CLIENT_NOT_FOUND', match)
   return created.id
+}
+
+/** Enregistre les photos d'un message (stockage privé) et note dans l'historique ce que Kingso y a lu. */
+export async function storeMessagePhotos(caseId: string, messageId: string, photos: ImageInput[], note: string, author?: string | null) {
+  if (photos.length === 0) return
+  const paths: string[] = []
+  for (const photo of photos) paths.push(await saveCasePhoto(caseId, photo))
+  await db.savMessage.update({ where: { id: messageId }, data: { photos: { push: paths } } })
+  await addSavEvent(caseId, 'PHOTOS_ADDED', `${paths.length} photo${paths.length > 1 ? 's' : ''}${note ? ` — lu : ${note}` : ''}`, author)
 }

@@ -51,7 +51,7 @@ interface CaseData {
   appointmentIso: string | null
   appointmentMinutes: number
   planningLink: string | null
-  messages: { id: string; source: string; text: string; at: string; phone: string; durationSec: number | null }[]
+  messages: { id: string; source: string; text: string; at: string; phone: string; durationSec: number | null; photos: CasePhoto[]; photoNote: string | null }[]
   events: { id: string; label: string; kind: string; detail: string | null; author: string | null; at: string }[]
   conversation: { id: string; user: string; kingso: string; at: string; fromCase: boolean }[]
 }
@@ -282,8 +282,17 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                     {SOURCE_LABELS[m.source]} · {m.at}{m.phone ? ` · ${m.phone}` : ''}{m.durationSec ? ` · ${m.durationSec} s` : ''}
                   </summary>
                   <p className="mt-2 whitespace-pre-wrap text-gray-700">{m.text}</p>
+                  {m.photos.length > 0 && (
+                    <div className="mt-3 max-w-sm">
+                      <TechPhotos caseId={data.id} photos={m.photos} editable canAdd={false} removeAction="message_photo_remove" />
+                    </div>
+                  )}
+                  {m.photoNote && <p className="mt-2 text-xs text-gray-500"><strong>Lu sur les photos :</strong> {m.photoNote}</p>}
                 </details>
               ))}
+              {data.messages.length > 0 && (
+                <TechPhotos caseId={data.id} photos={[]} editable addAction="message_photo" addLabel="📷 Ajouter des photos" />
+              )}
             </div>
           </Card>
 
