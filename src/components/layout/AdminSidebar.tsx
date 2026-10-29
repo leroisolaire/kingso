@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { logout } from '@/lib/auth/actions'
 import { canAccess, ROLE_LABELS, type UserRole } from '@/lib/auth/permissions'
+import NotificationBell from './NotificationBell'
 
 const navItems = [
   { href: '/admin', label: 'Tableau de bord', icon: '▦' },
@@ -40,6 +41,7 @@ export default function AdminSidebar({ user, badges = {} }: AdminSidebarProps) {
           <p className="text-sm font-semibold text-white">Kingso</p>
           <p className="text-xs text-slate-400">Back-office</p>
         </div>
+        {user && canAccess(user.roles, '/api/sav/notifications') && <div className="ml-auto"><NotificationBell /></div>}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">

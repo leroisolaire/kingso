@@ -1,5 +1,12 @@
 // Libellés partagés (back-office) — sans dépendance serveur : utilisables dans les composants client.
-import type { SavCategory, SavStatus } from '@prisma/client'
+import type { SavCategory, SavSource, SavStatus } from '@prisma/client'
+
+/** Origine du dossier, affichée sur la liste. */
+export const SOURCE_LABELS: Record<SavSource, string> = {
+  VOICEMAIL: '☎ Répondeur',
+  CHAT: '💬 Demande depuis un chat',
+  MANUAL: '✍ Saisi par l’équipe',
+}
 
 export const STATUS_LABELS: Record<SavStatus, string> = {
   NEW: 'À traiter',

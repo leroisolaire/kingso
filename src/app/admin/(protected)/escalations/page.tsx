@@ -4,6 +4,9 @@ import Table from '@/components/ui/Table'
 import Badge from '@/components/ui/Badge'
 import { db } from '@/lib/db/client'
 import { isEmailConfigured } from '@/lib/email/brevo'
+import { CHAT_REQUEST_WHERE } from '@/lib/sav/chatRequests'
+import { normalizePhone } from '@/lib/sav/phone'
+import { STATUS_COLORS, STATUS_LABELS } from '@/lib/sav/status'
 
 export const metadata: Metadata = { title: 'Demandes SAV | Admin' }
 
@@ -15,11 +18,32 @@ export default async function EscalationsPage() {
   })
   const failed = escalations.filter((e) => !e.emailSent).length
 
+  // Dossier de l'espace SAV de chaque demande : celui de la conversation, sinon le dossier du même téléphone
+  // qui a reçu la demande (relance d'un dossier déjà ouvert)
+  const cases = await db.savCase.findMany({
+    where: {
+      OR: [
+        { chatSessionToken: { in: escalations.map((e) => e.sessionToken) } },
+        { AND: [CHAT_REQUEST_WHERE, { phoneKey: { in: escalations.map((e) => normalizePhone(e.phone)).filter((p): p is string => Boolean(p)) } }] },
+      ],
+    },
+    select: { id: true, number: true, status: true, chatSessionToken: true, phoneKey: true, receivedAt: true },
+    orderBy: { receivedAt: 'desc' },
+  })
+  const caseOf = (e: (typeof escalations)[number]) =>
+    cases.find((c) => c.chatSessionToken === e.sessionToken)
+    ?? cases.find((c) => c.phoneKey && c.phoneKey === normalizePhone(e.phone) && c.receivedAt <= e.createdAt)
+
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Demandes SAV</h1>
-        <p className="mt-1 text-sm text-gray-500">Demandes transmises par les clients depuis les chats.</p>
+        <p className="mt-1 text-sm text-gray-500">
+          Demandes transmises par les clients depuis les chats. Chacune crée un dossier « À rappeler » dans l&apos;espace SAV (ou relance le dossier déjà ouvert du client).
+        </p>
+        <Link href="/admin/sav?origine=chat" className="mt-2 inline-block text-sm font-medium text-amber-700 hover:underline">
+          Voir les demandes des chats dans l&apos;espace SAV →
+        </Link>
       </div>
 
       {!isEmailConfigured() && (
@@ -54,6 +78,19 @@ export default async function EscalationsPage() {
             key: 'email',
             header: 'Email SAV',
             render: (e) => (e.emailSent ? <Badge variant="published">Envoyé</Badge> : <Badge variant="internal">Non envoyé</Badge>),
+          },
+          {
+            key: 'case',
+            header: 'Dossier SAV',
+            render: (e) => {
+              const c = caseOf(e)
+              return c ? (
+                <Link href={`/admin/sav/${c.id}`} className="inline-flex items-center gap-2 hover:underline">
+                  <span className="font-medium text-gray-900">n° {c.number}</span>
+                  <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[c.status]}`}>{STATUS_LABELS[c.status]}</span>
+                </Link>
+              ) : <span className="text-xs text-gray-400">—</span>
+            },
           },
           {
             key: 'actions',

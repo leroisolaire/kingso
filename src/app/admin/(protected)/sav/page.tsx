@@ -9,7 +9,8 @@ import { checkMailboxIfStale } from '@/lib/sav/gmail'
 import { formatPhone } from '@/lib/sav/phone'
 import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
-import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS } from '@/lib/sav/status'
+import { CATEGORY_COLORS, CATEGORY_LABELS, SAV_TABS, SOURCE_LABELS } from '@/lib/sav/status'
+import { CHAT_REQUEST_WHERE } from '@/lib/sav/chatRequests'
 import { kingsoPresence, PRESENCE_STYLES } from '@/lib/sav/presence'
 import { refreshSavTimers } from '@/lib/sav/timers'
 import { savSearchWhere } from '@/lib/sav/search'
@@ -29,12 +30,12 @@ function emailState(c: { email: string | null; emailTemplate: string | null; ema
   return { label: '', cls: '' }
 }
 
-export default async function SavPage({ searchParams }: { searchParams: Promise<{ onglet?: string; q?: string }> }) {
+export default async function SavPage({ searchParams }: { searchParams: Promise<{ onglet?: string; q?: string; origine?: string }> }) {
   // Passages automatiques en « À rappeler » (pas de clic, pas de nouvelles) avant d'afficher les listes
   await refreshSavTimers().catch(() => 0)
   // Nouveaux messages du répondeur dans la boîte kingso@ (s'ils n'ont pas déjà été relevés par la notification Gmail)
   after(() => checkMailboxIfStale().catch(() => null))
-  const { onglet, q: rawQuery } = await searchParams
+  const { onglet, q: rawQuery, origine } = await searchParams
   const query = (rawQuery ?? '').trim().slice(0, 100)
   const search = query ? savSearchWhere(query) : null
   const user = await getCurrentUser()
@@ -47,11 +48,16 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
   const done = tab.statuses.some((s) => s === 'RESOLVED' || s === 'CLOSED')
   // Recherche : dans tous les dossiers visibles par l'utilisateur, quel que soit l'onglet
   const visibleStatuses = [...new Set(tabs.flatMap((t) => t.statuses))]
+  // Filtre « Demandes des chats » (formulaire « Transmettre au SAV »), combiné aux onglets
+  const chatOnly = origine === 'chat' && !search
+  const originWhere = chatOnly ? CHAT_REQUEST_WHERE : {}
+  const tabHref = (key: string, chat = chatOnly) => `/admin/sav?onglet=${key}${chat ? '&origine=chat' : ''}`
 
-  const [counts, cases, settings, calendarConnected, defaultMinutes] = await Promise.all([
-    db.savCase.groupBy({ by: ['status'], _count: true }),
+  const [counts, chatCount, cases, settings, calendarConnected, defaultMinutes] = await Promise.all([
+    db.savCase.groupBy({ by: ['status'], where: originWhere, _count: true }),
+    db.savCase.count({ where: { AND: [CHAT_REQUEST_WHERE, { status: { in: visibleStatuses } }] } }),
     db.savCase.findMany({
-      where: search ? { AND: [{ status: { in: visibleStatuses } }, search] } : { status: { in: tab.statuses } },
+      where: search ? { AND: [{ status: { in: visibleStatuses } }, search] } : { AND: [{ status: { in: tab.statuses } }, originWhere] },
       // Files de travail : urgents d'abord, puis les plus anciens ; dossiers terminés et recherche : les plus récents
       // Onglet « Planifiés » : par date de rendez-vous (dossiers sans date en tête, à compléter)
       orderBy: search ? [{ receivedAt: 'desc' }]
@@ -131,7 +137,7 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
           return (
             <Link
               key={t.key}
-              href={`/admin/sav?onglet=${t.key}`}
+              href={tabHref(t.key)}
               className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm ${active ? 'border-amber-500 font-semibold text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
             >
               {t.label}
@@ -141,12 +147,23 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
         })}
       </nav>
 
+      {!search && chatCount > 0 && (
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Link href={tabHref(tab.key, false)} className={`rounded-full px-3 py-1 ring-1 ${!chatOnly ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-gray-600 ring-gray-300 hover:bg-gray-50'}`}>
+            Tous les dossiers
+          </Link>
+          <Link href={tabHref(tab.key, true)} className={`rounded-full px-3 py-1 ring-1 ${chatOnly ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-gray-600 ring-gray-300 hover:bg-gray-50'}`}>
+            💬 Demandes des chats <span className="opacity-70">({chatCount})</span>
+          </Link>
+        </div>
+      )}
+
       {search && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <p className="text-gray-700">
             {cases.length === 0 ? 'Aucun dossier' : `${cases.length}${cases.length === 100 ? '+' : ''} dossier${cases.length > 1 ? 's' : ''}`} pour « <strong>{query}</strong> », tous statuts confondus
           </p>
-          <Link href={`/admin/sav?onglet=${tab.key}`} className="text-amber-700 hover:underline">Effacer la recherche</Link>
+          <Link href={tabHref(tab.key)} className="text-amber-700 hover:underline">Effacer la recherche</Link>
         </div>
       )}
 
@@ -199,6 +216,7 @@ export default async function SavPage({ searchParams }: { searchParams: Promise<
                     <p className="mt-0.5 line-clamp-2 text-sm text-gray-600">{c.summary}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
                       <span className={`rounded-md px-2 py-0.5 font-semibold ring-1 ${CATEGORY_COLORS[c.category]}`}>{CATEGORY_LABELS[c.category]}</span>
+                      <span className="rounded-md bg-gray-50 px-2 py-0.5 text-gray-600 ring-1 ring-gray-200">{SOURCE_LABELS[c.source]}</span>
                       {!c.clientId && c.source !== 'CHAT' && (
                         <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-semibold text-yellow-900 ring-1 ring-yellow-400">Client non identifié</span>
                       )}

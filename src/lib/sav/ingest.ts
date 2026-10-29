@@ -8,6 +8,7 @@ import { buildEmail } from './draft'
 import { describeImages, type ImageInput } from '@/lib/ai/assistant'
 import { saveCasePhoto } from '@/lib/storage/attachments'
 import { customerEmailFrom } from './emailAddress'
+import { CHAT_REQUEST_DETAIL } from './chatRequests'
 import { addSavEvent } from './events'
 import { formatPhone, normalizePhone } from './phone'
 import { formatParisDate, plannedSendTime } from './schedule'
@@ -189,7 +190,7 @@ export async function caseFromChatEscalation(params: {
   if (open) {
     await db.savMessage.create({ data: { caseId: open.id, source: 'CHAT', callerPhone: phoneKey, text, receivedAt: new Date() } })
     await db.savCase.update({ where: { id: open.id }, data: { status: 'TO_CALL', urgent: true, urgentReason: open.urgentReason ?? 'Relance du client', chatSessionToken: open.chatSessionToken ?? params.sessionToken } })
-    await addSavEvent(open.id, 'CALLBACK_REQUESTED', 'Demande depuis le chat (formulaire SAV)')
+    await addSavEvent(open.id, 'CALLBACK_REQUESTED', CHAT_REQUEST_DETAIL)
     return open.id
   }
 
@@ -225,7 +226,7 @@ export async function caseFromChatEscalation(params: {
       messages: { create: { source: 'CHAT', callerPhone: phoneKey, text, receivedAt: new Date() } },
     },
   })
-  await addSavEvent(created.id, 'CALLBACK_REQUESTED', 'Demande depuis le chat (formulaire SAV)')
+  await addSavEvent(created.id, 'CALLBACK_REQUESTED', CHAT_REQUEST_DETAIL)
   await addSavEvent(created.id, client ? 'CLIENT_FOUND' : 'CLIENT_NOT_FOUND', match)
   return created.id
 }
