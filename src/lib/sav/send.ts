@@ -5,6 +5,7 @@ import { caseLink } from './draft'
 import { addSavEvent } from './events'
 import { effectiveSendTime, formatParisDate } from './schedule'
 import { getSavSettings } from './settings'
+import { caseLinkMode, LINK_BUTTON_LABELS } from './linkMode'
 import { emailHtml } from './templates'
 
 /**
@@ -34,7 +35,7 @@ export async function sendCaseEmail(caseId: string, author?: string | null, opti
       bcc: [settings.senderEmail],
       replyTo: { email: settings.senderEmail, name: settings.senderName },
       subject: c.emailSubject,
-      html: emailHtml(c.emailBody, c.emailBody.includes(link) ? link : null),
+      html: emailHtml(c.emailBody, c.emailBody.includes(link) ? link : null, LINK_BUTTON_LABELS[caseLinkMode(c)]),
       ...(scheduled ? { scheduledAt: when.toISOString() } : {}),
     })
     await db.savCase.update({

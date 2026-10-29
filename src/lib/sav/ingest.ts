@@ -232,10 +232,43 @@ export async function caseFromChatEscalation(params: {
 }
 
 /** Enregistre les photos d'un message (stockage privé) et note dans l'historique ce que Kingso y a lu. */
-export async function storeMessagePhotos(caseId: string, messageId: string, photos: ImageInput[], note: string, author?: string | null) {
+export async function storeMessagePhotos(caseId: string, messageId: string, photos: ImageInput[], note: string, author?: string | null, kind = 'PHOTOS_ADDED') {
   if (photos.length === 0) return
   const paths: string[] = []
   for (const photo of photos) paths.push(await saveCasePhoto(caseId, photo))
   await db.savMessage.update({ where: { id: messageId }, data: { photos: { push: paths } } })
-  await addSavEvent(caseId, 'PHOTOS_ADDED', `${paths.length} photo${paths.length > 1 ? 's' : ''}${note ? ` — lu : ${note}` : ''}`, author)
+  await addSavEvent(caseId, kind, `${paths.length} photo${paths.length > 1 ? 's' : ''}${note ? ` — lu : ${note}` : ''}`, author)
+}
+
+/** Code affiché ou équipement lisible sur une photo : complète le dossier s'il ne les a pas encore. */
+export async function completeCaseFromPhotoNote(caseId: string, note: string) {
+  if (!note) return
+  const current = await db.savCase.findUniqueOrThrow({ where: { id: caseId }, select: { errorCode: true, equipment: true } })
+  if (current.errorCode && current.equipment) return
+  const facts = await analyzeMessage(`[Photo envoyée par le client : ${note}]`).catch(() => null)
+  const patch = {
+    ...(!current.errorCode && facts?.errorCode ? { errorCode: facts.errorCode } : {}),
+    ...(!current.equipment && facts?.equipment ? { equipment: facts.equipment } : {}),
+  }
+  if (Object.keys(patch).length) await db.savCase.update({ where: { id: caseId }, data: patch })
+}
+
+/**
+ * Photos envoyées par le client dans son chat personnel : copiées dans le dossier (nouveau message), pour que
+ * l'équipe les retrouve avec les autres, et ce que Kingso y lit complète le dossier.
+ */
+export async function addClientChatPhotos(caseId: string, photos: ImageInput[], note: string, text: string) {
+  if (photos.length === 0) return
+  const message = await db.savMessage.create({
+    select: { id: true },
+    data: {
+      caseId,
+      source: 'CHAT',
+      text: `Ajouté par le client dans son chat Kingso${text ? ` : ${text.slice(0, 2000)}` : ' (photos)'}`,
+      photoNote: note || null,
+      receivedAt: new Date(),
+    },
+  })
+  await storeMessagePhotos(caseId, message.id, photos, note, null, 'CLIENT_PHOTOS')
+  await completeCaseFromPhotoNote(caseId, note)
 }

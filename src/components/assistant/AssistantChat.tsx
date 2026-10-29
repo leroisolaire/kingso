@@ -151,7 +151,7 @@ interface AssistantChatProps {
   /** Question transmise par la page d'accueil (?q=) : envoyée automatiquement à l'ouverture */
   initialQuestion?: string
   /** Chat personnel ouvert depuis le lien d'un dossier SAV */
-  caseMode?: { token: string; resolved: boolean }
+  caseMode?: { token: string; resolved: boolean; mode: 'help' | 'complete' }
 }
 
 /**
@@ -451,7 +451,8 @@ export default function AssistantChat({ assistant, tiles = [], initialQuestion, 
 
             {(isTyping || routing) && <TypingBubble />}
 
-            {caseMode && hydrated && !isTyping && messages.some((m) => m.role === 'ASSISTANT' && !m.isError) && (
+            {/* « Compléter mon dossier » : ni « résolu » ni « être rappelé » (l'équipe recontacte déjà le client) */}
+            {caseMode?.mode === 'help' && hydrated && !isTyping && messages.some((m) => m.role === 'ASSISTANT' && !m.isError) && (
               <CaseActions
                 token={caseMode.token}
                 initial={caseMode.resolved ? 'resolved' : 'open'}

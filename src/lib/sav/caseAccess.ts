@@ -1,6 +1,8 @@
 import 'server-only'
 import { db } from '@/lib/db/client'
 import { addSavEvent } from './events'
+import { caseLinkMode } from './linkMode'
+import { getSavSettings } from './settings'
 
 /** Dossier correspondant au lien personnel du client (null si le lien est inconnu ou expiré). */
 export async function getCaseByToken(token: string | null | undefined) {
@@ -10,11 +12,19 @@ export async function getCaseByToken(token: string | null | undefined) {
     include: {
       assistant: { select: { slug: true } },
       client: { select: { equipment: true } },
-      messages: { where: { photoNote: { not: null } }, select: { photoNote: true } },
+      // Photos reçues par l'équipe (pas celles envoyées dans ce chat : déjà dans la conversation)
+      messages: { where: { photoNote: { not: null }, source: { not: 'CHAT' } }, select: { photoNote: true } },
     },
   })
   if (!c || c.tokenExpiresAt < new Date()) return null
   return c
+}
+
+/** Chat du lien personnel : celui du dossier, sinon le chat PAC des réglages (le lien marche toujours). */
+export async function caseAssistantSlug(c: { assistant: { slug: string } | null }): Promise<string | null> {
+  if (c.assistant?.slug) return c.assistant.slug
+  const { productChats } = await getSavSettings()
+  return productChats.PAC ?? Object.values(productChats)[0] ?? null
 }
 
 /** Ce que Kingso sait du client dans son chat personnel (jamais d'adresse, de téléphone ni d'email). */
@@ -89,10 +99,11 @@ const TO_IN_CHAT = ['NEW', 'WAITING'] as const
  * Envoyé par le navigateur lui-même : un antivirus de messagerie qui « clique » le lien ne le déclenche pas.
  */
 export async function recordPresence(caseId: string) {
-  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { status: true, linkOpenedAt: true } })
+  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { status: true, linkOpenedAt: true, category: true, emailTemplate: true } })
   if (!c) return
   const now = new Date()
-  const toChat = (TO_IN_CHAT as readonly string[]).includes(c.status)
+  // « Compléter mon dossier » : le dossier reste où il est (l'équipe doit toujours le traiter)
+  const toChat = caseLinkMode(c) === 'help' && (TO_IN_CHAT as readonly string[]).includes(c.status)
   await db.savCase.update({
     where: { id: caseId },
     data: { lastSeenAt: now, ...(c.linkOpenedAt ? {} : { linkOpenedAt: now }), ...(toChat ? { status: 'IN_CHAT' as const } : {}) },
@@ -102,7 +113,7 @@ export async function recordPresence(caseId: string) {
 
 /** Premier message du client dans son chat personnel : conversation rattachée au dossier. */
 export async function markCaseChatStarted(caseId: string, sessionToken: string) {
-  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { chatSessionToken: true, status: true, linkOpenedAt: true } })
+  const c = await db.savCase.findUnique({ where: { id: caseId }, select: { chatSessionToken: true, status: true, linkOpenedAt: true, category: true, emailTemplate: true } })
   if (!c) return
   const now = new Date()
   if (c.chatSessionToken) {
@@ -116,7 +127,7 @@ export async function markCaseChatStarted(caseId: string, sessionToken: string) 
       chatOpenedAt: now,
       lastSeenAt: now,
       ...(c.linkOpenedAt ? {} : { linkOpenedAt: now }),
-      ...((TO_IN_CHAT as readonly string[]).includes(c.status) ? { status: 'IN_CHAT' as const } : {}),
+      ...(caseLinkMode(c) === 'help' && (TO_IN_CHAT as readonly string[]).includes(c.status) ? { status: 'IN_CHAT' as const } : {}),
     },
   })
   await addSavEvent(caseId, 'CHAT_STARTED', 'Premier message du client à Kingso')

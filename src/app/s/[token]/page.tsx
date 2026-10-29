@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import AssistantChat from '@/components/assistant/AssistantChat'
 import { findAssistantBySlug } from '@/lib/db/queries/assistants'
-import { getCaseByToken } from '@/lib/sav/caseAccess'
+import { caseAssistantSlug, getCaseByToken } from '@/lib/sav/caseAccess'
+import { caseLinkMode } from '@/lib/sav/linkMode'
 import type { PublicAssistant } from '@/types/assistant'
 
 // Lien personnel envoyé au client par email : le chat connaît déjà son dossier SAV
@@ -11,7 +12,9 @@ export const metadata: Metadata = { title: 'Kingso — Le Roi Solaire', robots: 
 export default async function CasePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params
   const savCase = await getCaseByToken(token)
-  const { assistant } = savCase?.assistant ? await findAssistantBySlug(savCase.assistant.slug) : { assistant: null }
+  // Chat du dossier, sinon le chat PAC : le lien marche toujours
+  const slug = savCase ? await caseAssistantSlug(savCase) : null
+  const { assistant } = slug ? await findAssistantBySlug(slug) : { assistant: null }
 
   if (!savCase || !assistant) {
     return (
@@ -25,9 +28,13 @@ export default async function CasePage({ params }: { params: Promise<{ token: st
     )
   }
 
+  // « Kingso peut aider » : dépannage pas à pas ; sinon : compléter le dossier pour l'équipe (photos, précisions)
+  const mode = caseLinkMode(savCase)
   const welcome = [
     'Bonjour, je suis Kingso, l\'assistant de Le Roi Solaire.',
-    `Vous nous avez laissé un message${savCase.emailProblem ? ` concernant ${savCase.emailProblem}` : ''}. Je vais vous aider à résoudre ce problème, pas à pas.`,
+    mode === 'help'
+      ? `Vous nous avez laissé un message${savCase.emailProblem ? ` concernant ${savCase.emailProblem}` : ''}. Je vais vous aider à résoudre ce problème, pas à pas.`
+      : `Votre demande SAV n° ${savCase.number}${savCase.emailProblem ? ` concernant ${savCase.emailProblem}` : ''} est bien enregistrée : notre équipe va vous recontacter. Pour l'aider à préparer la suite, vous pouvez compléter votre dossier ici, avec des photos et quelques précisions.`,
   ].join('\n\n')
 
   const publicAssistant: PublicAssistant = {
@@ -38,7 +45,7 @@ export default async function CasePage({ params }: { params: Promise<{ token: st
     startButtons: [],
     suggestedQuestions: [],
     escalationEnabled: false, // remplacé par le bouton « Être rappelé » (coordonnées déjà connues)
-    attachmentsEnabled: assistant.attachmentsEnabled,
+    attachmentsEnabled: true, // photos toujours possibles : elles complètent le dossier
     isPreview: false,
   }
 
@@ -46,7 +53,7 @@ export default async function CasePage({ params }: { params: Promise<{ token: st
     <AssistantChat
       assistant={publicAssistant}
       initialQuestion={savCase.clientQuestion ?? undefined}
-      caseMode={{ token, resolved: savCase.status === 'RESOLVED' }}
+      caseMode={{ token, resolved: savCase.status === 'RESOLVED', mode }}
     />
   )
 }

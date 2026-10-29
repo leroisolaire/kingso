@@ -1,7 +1,8 @@
 // SMS au client : texte, longueur et numéro. Sans dépendance serveur : utilisé aussi dans le dossier (compteur).
 
+// Convient à tous les cas : Kingso dépanne (« Kingso peut aider ») ou aide le client à compléter son dossier
 export const DEFAULT_SMS_TEXT =
-  'Le Roi Solaire : votre demande SAV est bien enregistrée. Notre assistant Kingso peut vous aider : {{lien}} Ne pas répondre.'
+  'Le Roi Solaire : demande SAV enregistrée. Aide et ajout de photos avec notre assistant Kingso : {{lien}} Ne pas répondre.'
 
 /** Nom d'expéditeur affiché à la place d'un numéro : 3 à 11 lettres ou chiffres (règle des opérateurs). */
 export function isValidSmsSender(sender: string): boolean {

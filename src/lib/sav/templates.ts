@@ -42,6 +42,9 @@ Kingso, l'assistant de Le Roi Solaire, peut vous guider pas à pas pour résoudr
 
 Nous avons bien reçu vos messages concernant {{probleme}}. Votre demande est suivie en priorité par notre équipe SAV.
 
+Vous pouvez compléter votre dossier (photos, précisions) avec Kingso, notre assistant :
+{{lien}}
+
 {{signature}}`,
   },
   INTERVENTION: {
@@ -49,6 +52,9 @@ Nous avons bien reçu vos messages concernant {{probleme}}. Votre demande est su
     body: `{{salutation}}
 
 Nous avons bien reçu votre message du {{date}} concernant {{probleme}}. Votre demande est enregistrée : notre équipe SAV revient vers vous pour organiser l'intervention.
+
+Pour nous aider à la préparer, vous pouvez compléter votre dossier (photos, précisions) avec Kingso, notre assistant :
+{{lien}}
 
 {{signature}}`,
   },
@@ -58,6 +64,9 @@ Nous avons bien reçu votre message du {{date}} concernant {{probleme}}. Votre d
 
 Nous avons bien reçu votre message du {{date}} concernant {{probleme}}. Votre demande est enregistrée et sera traitée par notre équipe.
 
+Pour nous aider à la traiter, vous pouvez compléter votre dossier (photos, précisions) avec Kingso, notre assistant :
+{{lien}}
+
 {{signature}}`,
   },
   OTHER_PRODUCT: {
@@ -65,6 +74,9 @@ Nous avons bien reçu votre message du {{date}} concernant {{probleme}}. Votre d
     body: `{{salutation}}
 
 Nous avons bien reçu votre message du {{date}} concernant {{probleme}}. Votre demande est enregistrée et sera traitée par notre équipe.
+
+Pour nous aider à la traiter, vous pouvez compléter votre dossier (photos, précisions) avec Kingso, notre assistant :
+{{lien}}
 
 {{signature}}`,
   },
@@ -108,14 +120,14 @@ export function fillTemplate(text: string, values: Record<string, string>): stri
 }
 
 /** Corps texte → HTML : paragraphes, et le lien personnel en bouton. */
-export function emailHtml(body: string, link: string | null): string {
+export function emailHtml(body: string, link: string | null, buttonLabel = 'Résoudre mon problème avec Kingso'): string {
   const paragraphs = escapeHtml(body)
     .split(/\n{2,}/)
     .map((p) => {
       if (link && p.includes(escapeHtml(link))) {
         const [before] = p.split(escapeHtml(link))
         return `${before.trim() ? `<p style="margin:0 0 12px">${before.trim().replace(/\n/g, '<br>')}</p>` : ''}
-          <p style="margin:0 0 20px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#e73e11;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:24px">Résoudre mon problème avec Kingso</a></p>`
+          <p style="margin:0 0 20px"><a href="${escapeHtml(link)}" style="display:inline-block;background:#e73e11;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:24px">${escapeHtml(buttonLabel)}</a></p>`
       }
       return `<p style="margin:0 0 14px">${p.replace(/\n/g, '<br>')}</p>`
     })

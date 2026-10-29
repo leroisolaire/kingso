@@ -5,7 +5,10 @@ import { searchScoped, formatContext, sourceIds } from '@/lib/rag/search'
 import { suggestVideo } from '@/lib/rag/videoSuggest'
 import type { Document } from '@/types/document'
 import { expandCategoryIds, findAssistantBySlug, getHomeTiles } from '@/lib/db/queries/assistants'
-import { caseContextText, getCaseByToken, markCaseChatStarted, caseConversation } from '@/lib/sav/caseAccess'
+import { caseAssistantSlug, caseContextText, getCaseByToken, markCaseChatStarted, caseConversation } from '@/lib/sav/caseAccess'
+import { addSavEvent } from '@/lib/sav/events'
+import { addClientChatPhotos } from '@/lib/sav/ingest'
+import { caseLinkMode } from '@/lib/sav/linkMode'
 import { resolveAssistant } from '@/lib/assistants/resolve'
 import { saveAttachments } from '@/lib/storage/attachments'
 import { checkRateLimit } from '@/lib/ratelimit'
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   const savCase = typeof body.caseToken === 'string' ? await getCaseByToken(body.caseToken) : null
 
   let resolved = await resolveAssistant(slug)
-  if (resolved.kind !== 'ok' && savCase?.assistant?.slug === slug) {
+  if (resolved.kind !== 'ok' && savCase && (await caseAssistantSlug(savCase)) === slug) {
     // Le lien personnel donne accès au chat du dossier même s'il n'est pas public
     const { assistant } = await findAssistantBySlug(slug)
     if (assistant) resolved = { kind: 'ok', assistant, isPreview: false }
@@ -86,7 +89,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     // Question du dossier envoyée automatiquement à l'ouverture : jamais deux fois (lien rouvert ailleurs)
     if (body.initial === true && caseEntries.length > 0) return NextResponse.json({ alreadyStarted: true }, { status: 409 })
 
-    const images = assistant.attachmentsEnabled ? parseImages(body.images) : []
+    // Chat personnel : photos toujours possibles (elles complètent le dossier)
+    const images = assistant.attachmentsEnabled || savCase ? parseImages(body.images) : []
     if (typeof images === 'string') return NextResponse.json({ error: images }, { status: 400 })
     if (!message && images.length === 0) return NextResponse.json({ error: 'Message requis.' }, { status: 400 })
 
@@ -149,6 +153,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       context,
       history,
       caseContext: savCase ? caseContextText(savCase) : undefined,
+      caseMode: savCase ? caseLinkMode(savCase) : undefined,
     })
 
     // Procédure donnée sans vidéo : on cherche une vidéo de démonstration de cette opération
@@ -177,7 +182,16 @@ export async function POST(request: NextRequest, { params }: Params) {
       },
     })
 
-    if (savCase) await markCaseChatStarted(savCase.id, sessionToken)
+    if (savCase) {
+      await markCaseChatStarted(savCase.id, sessionToken)
+      // Photos du client : aussi dans le dossier ; « Compléter mon dossier » : l'équipe est prévenue (cloche)
+      const caseId = savCase.id
+      if (images.length) after(() => addClientChatPhotos(caseId, images, imageDescription, message).catch((e) => console.error('[chat] photos dossier', e)))
+      if (message && body.initial !== true && caseLinkMode(savCase) === 'complete') {
+        const recent = await db.savEvent.findFirst({ where: { caseId, kind: 'CLIENT_INFO', createdAt: { gte: new Date(Date.now() - 30 * 60_000) } }, select: { id: true } })
+        if (!recent) await addSavEvent(caseId, 'CLIENT_INFO', message.slice(0, 300))
+      }
+    }
 
     // Titre de la conversation pour l'historique, mis à jour après la réponse (ne ralentit pas le chat)
     after(() => refreshConversationSummary(sessionToken))

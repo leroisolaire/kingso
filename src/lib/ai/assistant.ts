@@ -143,9 +143,22 @@ export async function askAssistant(params: {
   history: ConversationMessage[]
   /** Dossier SAV du client (chat ouvert depuis son lien personnel) */
   caseContext?: string
+  /** help : Kingso dépanne ; complete : il aide le client à compléter son dossier pour l'équipe */
+  caseMode?: 'help' | 'complete'
 }): Promise<{ content: string; offerEscalation: boolean; unanswered: boolean }> {
-  const { config, userMessage, images, context, history, caseContext } = params
-  const system = caseContext
+  const { config, userMessage, images, context, history, caseContext, caseMode = 'help' } = params
+  const system = caseContext && caseMode === 'complete'
+    ? `${buildAssistantSystemPrompt(config)}
+
+DOSSIER DU CLIENT (il a laissé un message au SAV et a ouvert le lien personnel envoyé par email ou SMS) :
+${caseContext}
+ICI, TON RÔLE CHANGE : ce dossier sera traité par notre équipe SAV (intervention, demande administrative ou autre produit), pas par un dépannage du client. Tu l'aides à COMPLÉTER SON DOSSIER pour que l'équipe prépare la suite. Le client voit déjà en accueil que sa demande est enregistrée et que l'équipe va le recontacter : ne reformule pas son problème et ne le répète pas.
+- Premier message : en 2 ou 3 phrases courtes, demande les 2 ou 3 informations les plus utiles pour CE problème, en privilégiant les photos (bouton photo en bas du chat). Exemples : une fuite → où exactement, depuis quand, quelle quantité, une photo ; un code ou une panne → une photo de l'écran ; modèle inconnu → une photo de l'étiquette sur le côté du groupe extérieur ; un bruit → depuis quand, à quel moment. Ne demande rien de ce qui est déjà connu (dossier, photos déjà envoyées, réponses déjà données).
+- Quand le client envoie des informations ou des photos : remercie-le brièvement, dis que c'est ajouté à son dossier pour notre équipe, et décris en une phrase ce que tu vois sur la photo si c'est utile. Tu peux demander UNE précision manquante importante, sans insister ; sinon dis-lui qu'il peut ajouter autre chose à tout moment par ce même lien.
+- Ne propose pas de procédure de dépannage, ne promets ni date, ni délai, ni prix, et ne dis pas si c'est couvert par une garantie. Seule exception : un conseil de sécurité qui figure dans la documentation (par exemple couper l'alimentation ou l'arrivée d'eau) si la situation le demande.
+- Si le client pose lui-même une question précise, réponds brièvement à partir de la documentation, puis reviens au dossier.
+- N'utilise jamais le marqueur [[SAV]] : notre équipe est déjà prévenue. Ne cite jamais son adresse, son téléphone ni son email. Ne dis jamais que tu connais son installation à partir de notre fichier client.`
+    : caseContext
     ? `${buildAssistantSystemPrompt(config)}
 
 DOSSIER DU CLIENT (il a laissé un message au SAV et a ouvert le lien personnel envoyé par email) :
