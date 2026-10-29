@@ -1,6 +1,7 @@
 import 'server-only'
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db/client'
+import { DEFAULT_SMS_TEXT } from './smsText'
 
 // Réglages de l'espace SAV (modifiables dans le back-office).
 
@@ -24,6 +25,9 @@ export interface SavSettings {
   senderEmail: string
   senderName: string
   signature: string
+  /** SMS d'accusé de réception : nom affiché (11 caractères max) et texte ({{lien}} = lien personnel) */
+  smsSender: string
+  smsText: string
   /** Dossier Drive du fichier client (export Extrabat), hors base documentaire */
   clientFolderId: string
 }
@@ -41,6 +45,8 @@ export const DEFAULT_SAV_SETTINGS: SavSettings = {
   senderEmail: 'sav@leroisolaire.fr',
   senderName: 'SAV Le Roi Solaire',
   signature: "L'équipe SAV Le Roi Solaire",
+  smsSender: 'RoiSolaire',
+  smsText: DEFAULT_SMS_TEXT,
   clientFolderId: '',
 }
 

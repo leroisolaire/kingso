@@ -19,6 +19,8 @@ export const EVENT_LABELS: Record<string, string> = {
   EMAIL_CANCELLED: 'Email annulé',
   EMAIL_SKIPPED: 'Pas d\'email envoyé',
   EMAIL_ERROR: 'Erreur d\'envoi',
+  SMS_SENT: 'SMS envoyé',
+  SMS_ERROR: 'Erreur d\'envoi du SMS',
   LINK_OPENED: 'Le client a ouvert son lien',
   CHAT_STARTED: 'Le client échange avec Kingso',
   CLIENT_LEFT: 'Le client a quitté Kingso sans conclure',

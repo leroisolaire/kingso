@@ -10,6 +10,8 @@ import { EVENT_LABELS } from '@/lib/sav/events'
 import { formatPhone } from '@/lib/sav/phone'
 import { formatAppointment, formatParisDate } from '@/lib/sav/schedule'
 import { getSavSettings } from '@/lib/sav/settings'
+import { smsPhoneOf } from '@/lib/sav/sms'
+import { fillSmsText } from '@/lib/sav/smsText'
 import { SAV_TABS } from '@/lib/sav/status'
 import { getTemplates } from '@/lib/sav/templates'
 import { refreshSavTimers } from '@/lib/sav/timers'
@@ -70,6 +72,10 @@ export default async function SavCasePage({ params, searchParams }: {
     getSignedUrls([...c.techPhotos, ...c.messages.flatMap((m) => m.photos)]).catch(() => ({} as Record<string, string>)),
   ])
 
+  // SMS d'accusé de réception : envoyé, ou dernière tentative en erreur
+  const smsSent = c.events.find((e) => e.kind === 'SMS_SENT')
+  const lastSms = c.events.find((e) => e.kind === 'SMS_SENT' || e.kind === 'SMS_ERROR')
+
   // Échange avec Kingso : présence en direct et résumé (lien ouvert, messages, départ)
   const presence = kingsoPresence({
     lastSeenAt: c.lastSeenAt,
@@ -93,6 +99,13 @@ export default async function SavCasePage({ params, searchParams }: {
       <BackToList href={backHref} label={backLabel} />
       <CaseView
         paused={settings.paused}
+        sms={{
+          phone: formatPhone(smsPhoneOf(c)) || null,
+          text: fillSmsText(settings.smsText, caseLink(c.accessToken)),
+          sent: smsSent ? formatParisDate(smsSent.createdAt, true) : null,
+          // Dernière tentative en échec (les événements sont du plus récent au plus ancien)
+          error: lastSms?.kind === 'SMS_ERROR' ? lastSms.detail : null,
+        }}
         link={caseLink(c.accessToken)}
         templates={templates.map((t) => ({ key: t.key, name: t.name, autoSend: t.autoSend }))}
         assistants={assistants}

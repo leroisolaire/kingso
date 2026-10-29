@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import { PRESENCE_STYLES, type Presence } from '@/lib/sav/presence'
+import { smsLength } from '@/lib/sav/smsText'
 import DictationButton from './DictationButton'
 import DurationSelect from '../DurationSelect'
 import { CATEGORY_COLORS, CATEGORY_LABELS, STATUS_COLORS, STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
@@ -72,6 +73,8 @@ interface Props {
   data: CaseData
   link: string
   paused: boolean
+  /** SMS d'accusé de réception : mobile du client (sinon null), texte prévu, envoi fait ou dernière erreur */
+  sms: { phone: string | null; text: string; sent: string | null; error: string | null }
   templates: { key: string; name: string; autoSend: boolean }[]
   assistants: { id: string; name: string }[]
   suggestions: ClientOption[]
@@ -156,7 +159,7 @@ function ClientPicker({ suggestions, onPick, disabled }: { suggestions: ClientOp
   )
 }
 
-export default function CaseView({ data, link, paused, templates, assistants, suggestions, kingso, calendarConnected, technicians, canDelete }: Props) {
+export default function CaseView({ data, link, paused, sms, templates, assistants, suggestions, kingso, calendarConnected, technicians, canDelete }: Props) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -175,6 +178,10 @@ export default function CaseView({ data, link, paused, templates, assistants, su
     setSubject(data.emailSubject)
     setBody(data.emailBody)
   }
+  const [smsText, setSmsText] = useState(sms.text)
+  const [alsoSms, setAlsoSms] = useState(true)
+  const canSms = Boolean(sms.phone) && !sms.sent
+  const smsInfo = smsLength(smsText)
   const [note, setNote] = useState('')
   const [callNote, setCallNote] = useState('')
   const [appointment, setAppointment] = useState('')
@@ -206,13 +213,19 @@ export default function CaseView({ data, link, paused, templates, assistants, su
   const emailDirty = subject !== data.emailSubject || body !== data.emailBody
   const sendEmail = async () => {
     if (emailDirty && !(await patch('save-email', { emailSubject: subject, emailBody: body }))) return
-    const res = await action('send', {})
+    const withSms = canSms && alsoSms
+    const res = await action('send', withSms ? { sms: true, smsText } : {})
     if (res?.scheduledAt) {
       const at = new Date(res.scheduledAt)
-      setInfo(at.getTime() - Date.now() > 2 * 60_000
+      setInfo((at.getTime() - Date.now() > 2 * 60_000
         ? `Email confié à l'envoi : il partira le ${at.toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`
-        : `Email envoyé à ${data.email}.`)
+        : `Email envoyé à ${data.email}.`) + (res.smsPhone ? ` SMS envoyé au ${sms.phone}.` : ''))
     }
+  }
+  const sendSms = async () => {
+    if (!confirm(`Envoyer ce SMS au ${sms.phone} ?`)) return
+    const res = await action('send_sms', { smsText })
+    if (res?.smsPhone) setInfo(`SMS envoyé au ${sms.phone}.`)
   }
   const deleteCase = async () => {
     if (!confirm(`Supprimer définitivement le dossier n° ${data.number} ? Ses messages et son historique seront effacés.`)) return
@@ -338,6 +351,12 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                 <input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={Boolean(data.emailSentAt)} className={inputCls} />
                 <textarea value={body} onChange={(e) => setBody(e.target.value)} disabled={Boolean(data.emailSentAt)} rows={12} className={`${inputCls} font-sans`} />
                 <p className="text-xs text-gray-400">Le lien personnel apparaîtra dans l&apos;email sous forme de bouton « Résoudre mon problème avec Kingso ».</p>
+                {!data.emailSentAt && canSms && (
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" checked={alsoSms} onChange={(e) => setAlsoSms(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+                    Envoyer aussi le SMS au {sms.phone}
+                  </label>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {!data.emailSentAt && (
                     <>
@@ -361,6 +380,36 @@ export default function CaseView({ data, link, paused, templates, assistants, su
                   )}
                 </div>
                 {paused && !data.emailSentAt && <p className="text-xs text-amber-700">Envois en pause : activez-les dans les réglages SAV.</p>}
+              </div>
+            )}
+          </Card>
+
+          {/* SMS d'accusé de réception (avec le lien personnel vers Kingso) */}
+          <Card title="SMS au client">
+            {sms.sent ? (
+              <p className="text-sm text-green-700">SMS envoyé le {sms.sent} (voir l&apos;historique).</p>
+            ) : !sms.phone ? (
+              <p className="text-sm text-gray-500">Pas de numéro de mobile (06 ou 07) pour ce client : pas de SMS possible.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm">À : <strong>{sms.phone}</strong></p>
+                {sms.error && <p className="text-sm text-red-600">Dernière erreur : {sms.error}</p>}
+                <textarea value={smsText} onChange={(e) => setSmsText(e.target.value)} rows={4} className={`${inputCls} font-sans`} />
+                <p className={`text-xs ${smsInfo.parts > 1 ? 'font-medium text-amber-700' : 'text-gray-400'}`}>
+                  {smsInfo.chars} caractères · {smsInfo.parts} SMS
+                  {smsInfo.parts > 1 && ' (facturé ' + smsInfo.parts + ' fois)'}
+                  {smsInfo.unicode && ` · caractères spéciaux (${smsInfo.nonGsm.join(' ')}) : 70 caractères par SMS seulement`}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="secondary" onClick={sendSms} loading={busy === 'send_sms'} disabled={busy !== null || paused || smsInfo.parts > 3 || !smsText.trim()}>
+                    Envoyer le SMS
+                  </Button>
+                  {smsText !== sms.text && (
+                    <Button type="button" variant="ghost" onClick={() => setSmsText(sms.text)} disabled={busy !== null}>Texte d&apos;origine</Button>
+                  )}
+                </div>
+                {!data.emailSentAt && data.email && <p className="text-xs text-gray-400">Il peut aussi partir avec l&apos;email (case à cocher au-dessus).</p>}
+                {paused && <p className="text-xs text-amber-700">Envois en pause : activez-les dans les réglages SAV.</p>}
               </div>
             )}
           </Card>

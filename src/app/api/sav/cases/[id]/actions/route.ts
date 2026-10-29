@@ -10,6 +10,7 @@ import { prepareEmail, storeMessagePhotos } from '@/lib/sav/ingest'
 import { isValidDuration } from '@/lib/sav/duration'
 import { formatAppointment, parisTime } from '@/lib/sav/schedule'
 import { cancelCaseEmail, sendCaseEmail } from '@/lib/sav/send'
+import { sendCaseSms } from '@/lib/sav/sms'
 import { STATUS_LABELS, TECH_OUTCOMES, type TechOutcome } from '@/lib/sav/status'
 import { checkTechnician } from '@/lib/sav/technicians'
 import { removeCasePhoto, saveCasePhoto } from '@/lib/storage/attachments'
@@ -54,8 +55,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   try {
     switch (body.action) {
-      case 'send':
-        return NextResponse.json({ ok: true, scheduledAt: await sendCaseEmail(id, author, { now: true }) })
+      case 'send': {
+        const scheduledAt = await sendCaseEmail(id, author, { now: true })
+        // Case « Envoyer aussi le SMS » : l'email est parti même si le SMS échoue
+        if (body.sms === true) {
+          const sms = await sendCaseSms(id, typeof body.smsText === 'string' ? body.smsText : null, author)
+            .then((phone) => ({ smsPhone: phone }), (e) => ({ warning: `Email envoyé, mais SMS non envoyé : ${e instanceof Error ? e.message : e}` }))
+          return NextResponse.json({ ok: true, scheduledAt, ...sms })
+        }
+        return NextResponse.json({ ok: true, scheduledAt })
+      }
+      case 'send_sms':
+        return NextResponse.json({ ok: true, smsPhone: await sendCaseSms(id, typeof body.smsText === 'string' ? body.smsText : null, author) })
       case 'cancel_email':
         await cancelCaseEmail(id, 'Annulé par l\'équipe', author)
         break

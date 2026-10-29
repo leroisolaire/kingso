@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import type { ClientFileState } from '@/lib/sav/clientSync'
 import type { SavSettings } from '@/lib/sav/settings'
+import { smsLength } from '@/lib/sav/smsText'
 
 interface Template {
   key: string
@@ -212,11 +213,15 @@ export default function SettingsClient({ settings, templates, assistants, client
   const router = useRouter()
   const [s, setS] = useState(settings)
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const smsInfo = smsLength(s.smsText.replace('{{lien}}', 'https://kingso.fr/s/xxxxxxxxxxxxxxxxxxxxxxxx'))
 
   const save = async (patch: Partial<SavSettings>) => {
     setState('saving')
     const res = await fetch('/api/sav/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
-    if (res.ok) setS(await res.json())
+    const json = await res.json().catch(() => ({}))
+    if (res.ok) setS(json)
+    setSaveError(res.ok ? null : json.error ?? `Erreur ${res.status}`)
     setState(res.ok ? 'saved' : 'error')
     router.refresh()
   }
@@ -265,6 +270,24 @@ export default function SettingsClient({ settings, templates, assistants, client
         </label>
       </Card>
 
+      <Card title="SMS d'accusé de réception">
+        <p className="text-sm text-gray-500">
+          Envoyé seulement quand l&apos;équipe clique (dans le dossier, ou avec l&apos;email), vers les mobiles (06, 07). Crédits SMS à acheter dans Brevo.
+        </p>
+        <label className="block text-sm text-gray-700">
+          Nom affiché comme expéditeur (3 à 11 lettres ou chiffres, sans accent)
+          <input value={s.smsSender} onChange={(e) => setS({ ...s, smsSender: e.target.value })} maxLength={11} className={inputCls} />
+        </label>
+        <label className="block text-sm text-gray-700">
+          Texte du SMS ({'{{lien}}'} = lien personnel du client vers Kingso)
+          <textarea value={s.smsText} onChange={(e) => setS({ ...s, smsText: e.target.value })} rows={3} className={inputCls} />
+        </label>
+        <p className={`text-xs ${smsInfo.parts > 1 ? 'font-medium text-amber-700' : 'text-gray-400'}`}>
+          Avec le lien : {smsInfo.chars} caractères · {smsInfo.parts} SMS{smsInfo.parts > 1 ? ` (facturé ${smsInfo.parts} fois)` : ''}
+          {smsInfo.unicode && ` · caractères spéciaux (${smsInfo.nonGsm.join(' ')}) : 70 caractères par SMS seulement`}
+        </p>
+      </Card>
+
       <Card title="Délais">
         {num('sendDelayMinutes', 'Envoi de l\'email après l\'appel (environ)', 'min')}
         {num('selfHelpLastHour', '« Kingso peut aider » : envoi possible jusqu\'à', 'h')}
@@ -294,7 +317,7 @@ export default function SettingsClient({ settings, templates, assistants, client
       <div className="flex items-center gap-3">
         <Button type="button" onClick={() => save(s)} loading={state === 'saving'}>Enregistrer les réglages</Button>
         {state === 'saved' && <span className="text-sm text-green-700">Enregistré</span>}
-        {state === 'error' && <span className="text-sm text-red-600">Erreur</span>}
+        {state === 'error' && <span className="text-sm text-red-600">{saveError ?? 'Erreur'}</span>}
       </div>
 
       <ClientFileCard folderId={settings.clientFolderId} state={clientFile} />
